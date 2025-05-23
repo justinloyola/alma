@@ -1,58 +1,52 @@
 # Alma
 
+## Quick Start
+
 ```bash
 docker-compose up --build
 ```
-npm run build
 
-# Preview the production build
-npm run preview
+## Environment Setup
+
+### Backend (.env)
+
+Create a `.env` file in the `backend` directory with the following content:
+
+```env
+# Application Settings
+APP_NAME=Alma
+APP_ENV=development
+DEBUG=True
+
+# Database Configuration
+DATABASE_URL=postgresql://postgres:postgres@db:5432/alma
+
+# File Uploads
+MAX_FILE_SIZE=5242880  # 5MB in bytes
+UPLOAD_DIR=/app/uploads
+STORAGE_TYPE=filesystem
+
+# Security
+SECRET_KEY=your-super-secret-key-change-this-in-production
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=1440  # 24 hours
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:8000
+
+# Email Configuration
+SMTP_TLS=True
+SMTP_PORT=587
+SMTP_HOST=smtp.sendgrid.net
+SMTP_USER=apikey
+SMTP_PASSWORD=your-sendgrid-api-key
+EMAILS_ENABLED=False  # Set to True to enable email sending
+EMAILS_FROM_EMAIL=noreply@yourdomain.com
+EMAILS_FROM_NAME="Alma Team"
+ADMIN_EMAIL=admin@yourdomain.com
 ```
 
-## Development Workflow
+### Frontend (.env)
 
-1. Start the backend server in one terminal:
-   ```bash
-   cd backend
-   python run.py
-   ```
+Create a `.env` file in the `frontend` directory with:
 
-2. In another terminal, start the frontend development server:
-   ```bash
-   cd frontend
-   npm run dev
-   ```
-
-3. Access the application at http://localhost:5173
-
-## Environment Variables
-
-### Backend
-
-Backend environment variables can be set in a `.env` file in the `backend` directory.
-
-### Frontend
-
-Frontend environment variables should be prefixed with `VITE_` and can be set in the `.env` file in the `frontend` directory. See `.env.example` for reference.
-
-## Testing
-
-### Backend Tests
-
-```bash
-# From the backend directory
-pytest
-```
-
-### Frontend Tests
-
-```bash
-# From the frontend directory
-npm test
-# or
-yarn test
-```
-
-## Deployment
-
-Coming soon...
+```env
+VITE_API_BASE_URL=http://localhost:8000
