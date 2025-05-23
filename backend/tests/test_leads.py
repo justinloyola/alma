@@ -406,9 +406,10 @@ def test_mark_lead_reached_out(
         print(f"Response status code: {response.status_code}")
         print(f"Response content: {response.content}")
 
-        assert (
-            response.status_code == 200
-        ), f"Expected status code 200, got {response.status_code}. Response: {response.content}"  # noqa: E501
+        assert response.status_code == 200, (  # noqa: E501
+            f"Expected status code 200, got {response.status_code}. "
+            f"Response: {response.content}"
+        )
         data = response.json()
         assert data["status"] == "reached_out"
 
@@ -460,3 +461,69 @@ def test_mark_nonexistent_lead_reached_out(
         f"Mark non-existent lead as reached out response: {response.status_code}, {response.content}"  # noqa: E501
     )
     assert response.status_code == 404
+
+
+def test_get_leads(
+    client: TestClient,
+    db: Session,
+    auth_headers: Dict[str, str],
+    create_test_user: None,
+) -> None:
+    """Test retrieving a list of leads with pagination."""
+    from datetime import datetime
+
+    from app.db.models import LeadDB
+
+    # Test unauthenticated request
+    response = client.get("/api/v1/leads")
+    assert response.status_code == 401, "Unauthenticated request should return 401"
+
+    # Create test leads
+    test_leads = []
+    for i in range(1, 6):
+        lead = LeadDB(
+            first_name=f"Test{i}",
+            last_name=f"Lead{i}",
+            email=f"test{i}@example.com",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(lead)
+        test_leads.append(lead)
+    db.commit()
+
+    # Test getting all leads
+    response = client.get("/api/v1/leads", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify response structure
+    assert isinstance(data, list)
+    assert len(data) == 5  # Should return all 5 test leads
+
+    # Verify lead data
+    for i, lead in enumerate(data, 1):
+        assert "id" in lead
+        assert lead["first_name"] == f"Test{i}"
+        assert lead["last_name"] == f"Lead{i}"
+        assert lead["email"] == f"test{i}@example.com"
+
+    # Test pagination
+    response = client.get("/api/v1/leads?skip=2&limit=2", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2  # Should return 2 leads
+    assert data[0]["email"] == "test3@example.com"
+    assert data[1]["email"] == "test4@example.com"
+
+    # Test with limit exceeding total
+    response = client.get("/api/v1/leads?skip=0&limit=10", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 5  # Should return all 5 test leads
+
+    # Test with skip exceeding total
+    response = client.get("/api/v1/leads?skip=10&limit=5", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 0  # Should return empty list
