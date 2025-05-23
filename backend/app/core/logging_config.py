@@ -12,8 +12,13 @@ class SimpleFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def setup_logging():
-    """Configure basic console logging for the application."""
+def setup_logging() -> None:
+    """
+    Configure basic console logging for the application.
+
+    This function sets up a console handler with a simple formatter and configures
+    the root logger and specific loggers for common libraries.
+    """
     # Set root logger level
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
@@ -28,14 +33,17 @@ def setup_logging():
 
     # Add handler to root logger
     root_logger.addHandler(console_handler)
+    # Prevent the log messages from being propagated to the root logger
+    # This prevents duplicate logs in some environments
+    root_logger.propagate = False
 
-    # Configure SQLAlchemy logging
-    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-
-    # Configure Uvicorn logging
-    logging.getLogger("uvicorn").setLevel(logging.INFO)
-    logging.getLogger("uvicorn.error").setLevel(logging.INFO)
-    logging.getLogger("uvicorn.access").disabled = True
+    # Set up specific loggers
+    loggers = ["uvicorn", "uvicorn.error", "fastapi"]
+    for logger_name in loggers:
+        logger = logging.getLogger(logger_name)
+        logger.handlers.clear()
+        logger.propagate = False
+        logger.addHandler(console_handler)
 
     # Log startup message
     logger = logging.getLogger(__name__)

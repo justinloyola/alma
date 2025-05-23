@@ -56,7 +56,19 @@ class LeadUpdate(BaseModel):
     status: Optional[LeadStatus] = Field(None, description="Current status of the lead")
 
     @validator("email")
-    def email_must_not_be_empty(cls, v):
+    def email_must_not_be_empty(cls, v: Optional[EmailStr]) -> Optional[EmailStr]:
+        """
+        Validate that email is not an empty string if provided.
+
+        Args:
+            v: The email value to validate.
+
+        Returns:
+            The validated email if not empty.
+
+        Raises:
+            ValueError: If the email is an empty string.
+        """
         if v == "":
             raise ValueError("Email cannot be empty")
         return v

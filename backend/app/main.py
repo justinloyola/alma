@@ -1,13 +1,15 @@
 # Standard library imports
 import logging
 import os
+from typing import Awaitable, Callable, Dict
 
 # Third-party imports
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.types import Receive, Scope, Send
 
 # Local application imports
 from app.api.endpoints import router as api_router
@@ -35,9 +37,24 @@ app = FastAPI(
 )
 
 
-# Add middleware to log requests
+# Define a type for the ASGI application callable
+ASGIAppCallable = Callable[[Scope, Receive, Send], Awaitable[None]]
+
+
 @app.middleware("http")
-async def log_requests(request: Request, call_next):
+async def log_requests(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """
+    Log all incoming requests and responses.
+
+    Args:
+        request: The incoming request.
+        call_next: The next middleware or route handler.
+
+    Returns:
+        Response: The response from the next middleware or route handler.
+    """
     logger.info(f"Request: {request.method} {request.url}")
     try:
         response = await call_next(request)
@@ -52,7 +69,7 @@ async def log_requests(request: Request, call_next):
         )
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"error": "Internal server error", "details": str(e)},
+            content={"detail": "Internal server error"},
         )
 
 
@@ -82,13 +99,23 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 app.include_router(api_router, prefix="/api")
 
 
-@app.get("/api/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy"}
+@app.get("/health", status_code=status.HTTP_200_OK)
+async def health_check() -> Dict[str, str]:
+    """
+    Health check endpoint.
+
+    Returns:
+        dict: A dictionary with the health status.
+    """
+    return {"status": "ok"}
 
 
-@app.get("/api/")
-async def read_root():
-    """Root endpoint."""
-    return {"message": "Welcome to Alma API"}
+@app.get("/", include_in_schema=False)
+async def read_root() -> Dict[str, str]:
+    """
+    Root endpoint.
+
+    Returns:
+        dict: A welcome message.
+    """
+    return {"message": "Welcome to the Alma API"}

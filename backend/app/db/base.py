@@ -1,10 +1,10 @@
 import os
 from contextlib import contextmanager
+from typing import Generator, Iterator
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 load_dotenv()
 
@@ -15,10 +15,22 @@ engine = create_engine(
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """Base class for all database models.
+
+    This class provides the base functionality for all SQLAlchemy models.
+    It's a thin wrapper around SQLAlchemy's DeclarativeBase.
+    """
 
 
-def get_db():
+def get_db() -> Generator[Session, None, None]:
+    """
+    Dependency function that yields a database session.
+
+    Yields:
+        Session: A SQLAlchemy database session.
+    """
     db = SessionLocal()
     try:
         yield db
@@ -27,7 +39,16 @@ def get_db():
 
 
 @contextmanager
-def get_db_session():
+def get_db_session() -> Iterator[Session]:
+    """
+    Context manager for database sessions.
+
+    Yields:
+        Session: A SQLAlchemy database session.
+
+    Raises:
+        Exception: Any exception that occurs during the session.
+    """
     db = SessionLocal()
     try:
         yield db

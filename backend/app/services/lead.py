@@ -2,7 +2,7 @@
 from typing import Any, Dict, Optional
 
 # Third-party imports
-from fastapi import HTTPException, UploadFile, status
+from fastapi import HTTPException, UploadFile, status as http_status
 from sqlalchemy.orm import Session
 
 # Local application imports
@@ -46,7 +46,7 @@ class LeadService:
         # Check for duplicate email
         if self.repository.get_by_email(lead_data["email"]):
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail={
                     "error": "Duplicate email",
                     "details": "A lead with this email already exists",
@@ -72,7 +72,7 @@ class LeadService:
                 # If file upload fails, delete the lead and re-raise
                 self.repository.delete(id=lead.id)
                 raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail={"error": "Error saving resume", "details": str(e)},
                 )
 
@@ -112,7 +112,7 @@ class LeadService:
         lead = self.get_lead(lead_id)
         if not lead:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=f"Lead with id {lead_id} not found",
             )
 
@@ -120,7 +120,7 @@ class LeadService:
         valid_statuses = [s.value for s in LeadStatus]
         if status not in valid_statuses:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}",
             )
 

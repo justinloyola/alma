@@ -1,8 +1,15 @@
 # Standard library imports
 import logging
+from io import BytesIO
 from typing import List
 
 # Third-party imports
+try:
+    import magic
+
+    MAGIC_AVAILABLE = True
+except ImportError:
+    MAGIC_AVAILABLE = False
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -10,20 +17,22 @@ from fastapi import (
     File,
     Form,
     HTTPException,
-    Response,
     UploadFile,
     status,
+    Response,
 )
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 # Local application imports
-from app.core.storage import get_storage
-from app.db.deps import get_db
-from app.models.lead import Lead, LeadBase, LeadStatus, LeadUpdate
+from app.core.storage import StorageType, get_storage
+from app.db.base import get_db
+from app.db.models import LeadDB, LeadStatus as DBLeadStatus
+from app.models.lead import Lead, LeadCreate, LeadUpdate, LeadStatus
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
 
 # Create a router for leads endpoints
 router = APIRouter(prefix="/leads", tags=["leads"])
@@ -34,17 +43,13 @@ async def create_new_lead(
     background_tasks: BackgroundTasks,
     first_name: str = Form(..., min_length=1, max_length=100),
     last_name: str = Form(..., min_length=1, max_length=100),
-    email: str = Form(
-        ...,
-        pattern=r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-    ),
+    email: str = Form(..., pattern=r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"),
     resume: UploadFile = File(
         ...,
         description="Resume file (PDF, JPG, or PNG, max 5MB)",
     ),
     storage_type: str = Form(
-        "filesystem",
-        description="Storage type: 'filesystem' or 'postgres'"
+        "filesystem", description="Storage type: 'filesystem' or 'postgres'"
     ),
     db: Session = Depends(get_db),
 ) -> Lead:
@@ -67,52 +72,112 @@ async def create_new_lead(
         HTTPException: If lead exists or validation fails
     """
     logger.info("Creating new lead for email: %s", email)
-    
+
     # Check if lead with this email already exists
-    existing_lead = db.query(Lead).filter(Lead.email == email).first()
+    existing_lead = db.query(LeadDB).filter(LeadDB.email == email).first()
     if existing_lead:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"A lead with email {email} already exists",
         )
-    
+
     try:
-        # Save the uploaded file
-        storage = get_storage(storage_type)
-        file_info = await storage.save_file(
-            file=resume,
-            prefix="resumes",
-            max_size_mb=5,
-            allowed_types={"application/pdf", "image/jpeg", "image/png"}
-        )
-        
-        # Create lead in database
-        lead_data = LeadBase(
+        # Create a temporary lead object for file storage
+        temp_lead = LeadDB(
             first_name=first_name,
             last_name=last_name,
             email=email,
-            resume_path=file_info["file_path"],
-            resume_original_filename=file_info["original_filename"],
-            resume_mime_type=file_info["content_type"],
-            resume_size=file_info["size"],
-            resume_storage_type=storage_type,
-            status=LeadStatus.NEW
+            status=LeadStatus.PENDING.value,  # Convert to string value for DB
         )
-        
-        db_lead = Lead(**lead_data.dict())
+
+        # Get the file content and MIME type
+        file_content = await resume.read()
+        mime = magic.Magic(mime=True)
+        mime_type = mime.from_buffer(file_content)
+
+        # Save the uploaded file
+        storage_type_enum = (
+            StorageType(storage_type) if storage_type else StorageType.FILESYSTEM
+        )
+        storage = get_storage(storage_type_enum)
+
+        # Create a file-like object from the uploaded file content
+        file_obj = BytesIO(file_content)
+
+        # Save the file using the storage backend
+        file_path = await storage.save_file(
+            file_data=file_obj,
+            lead=temp_lead,
+            original_filename=resume.filename or "resume",
+            mime_type=mime_type,
+        )
+
+        # Prepare file info for the response
+        file_info = {
+            "file_path": file_path,
+            "original_filename": resume.filename,
+            "content_type": mime_type,
+            "size": len(file_content),
+        }
+
+        # Create lead in database
+        lead_data = LeadCreate(
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            status=LeadStatus.PENDING,  # This uses the Pydantic model's enum
+        )
+
+        # Create lead data dictionary
+        lead_dict = lead_data.dict(exclude_unset=True)
+
+        # Ensure file_info is a dictionary
+        file_info_dict = (
+            dict(file_info) if not isinstance(file_info, dict) else file_info
+        )
+
+        # Create the database model with additional resume fields
+        db_lead = LeadDB(
+            first_name=lead_dict["first_name"],
+            last_name=lead_dict["last_name"],
+            email=lead_dict["email"],
+            status=lead_dict.get("status", LeadStatus.PENDING),
+            resume_path=file_info_dict.get("file_path"),
+            resume_original_filename=file_info_dict.get("original_filename"),
+            resume_mime_type=file_info_dict.get("content_type"),
+            resume_size=file_info_dict.get("size"),
+            resume_storage_type=StorageType(storage_type)
+            if storage_type
+            else StorageType.FILESYSTEM,
+        )
         db.add(db_lead)
         db.commit()
         db.refresh(db_lead)
-        
+
         logger.info("Successfully created lead with ID: %s", db_lead.id)
-        
+
         # Add background task if needed
         if background_tasks:
             logger.debug("Adding background task for new lead processing")
             # background_tasks.add_task(process_new_lead, db_lead.id)
-        
-        return db_lead
-        
+
+        # Create a new Lead instance with the required fields
+        lead = Lead(
+            id=db_lead.id,
+            first_name=db_lead.first_name,
+            last_name=db_lead.last_name,
+            email=db_lead.email,
+            status=LeadStatus(db_lead.status),  # Convert to the correct enum type
+            created_at=db_lead.created_at,
+            updated_at=db_lead.updated_at,
+            resume_path=db_lead.resume_path,
+            resume_original_filename=db_lead.resume_original_filename,
+            resume_mime_type=db_lead.resume_mime_type,
+            resume_size=db_lead.resume_size,
+            resume_storage_type=db_lead.resume_storage_type,
+        )
+        return lead
+
     except ValueError as e:
         error_msg = f"Validation error: {str(e)}"
         logger.error(
@@ -121,12 +186,11 @@ async def create_new_lead(
             extra={
                 "email": email,
                 "action": "submit_lead",
-                "status": "validation_failed"
+                "status": "validation_failed",
             },
         )
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_msg
+            status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg
         ) from e
     except Exception as e:
         logger.error(
@@ -142,7 +206,7 @@ async def create_new_lead(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"error": "Internal server error"}
+            detail={"error": "Internal server error"},
         ) from e
 
 
@@ -161,7 +225,8 @@ def read_leads(
     Returns:
         List of lead objects
     """
-    return db.query(Lead).offset(skip).limit(limit).all()
+    db_leads = db.query(LeadDB).offset(skip).limit(limit).all()
+    return [Lead.from_orm(lead) for lead in db_leads]
 
 
 @router.get("/{lead_id}", response_model=Lead)
@@ -179,10 +244,10 @@ def read_lead(lead_id: int, db: Session = Depends(get_db)) -> Lead:
     Raises:
         HTTPException: If lead is not found
     """
-    db_lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    db_lead = db.query(LeadDB).filter(LeadDB.id == lead_id).first()
     if not db_lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    return db_lead
+    return Lead.from_orm(db_lead)
 
 
 @router.get("/{lead_id}/resume")
@@ -202,7 +267,7 @@ async def download_resume(
     Raises:
         HTTPException: If lead or resume is not found
     """
-    db_lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    db_lead = db.query(LeadDB).filter(LeadDB.id == lead_id).first()
     if not db_lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
@@ -212,33 +277,31 @@ async def download_resume(
 
     # Get the appropriate storage backend
     try:
-        storage = get_storage(db_lead.resume_storage_type or "filesystem")
+        storage_type = (
+            str(db_lead.resume_storage_type)
+            if db_lead.resume_storage_type
+            else "filesystem"
+        )
+        storage = get_storage(StorageType(storage_type))
         file_obj = await storage.get_file(db_lead)
-
         if not file_obj:
             raise HTTPException(status_code=404, detail="Resume file not found")
 
-        # Return the file
         return StreamingResponse(
             file_obj,
             media_type=db_lead.resume_mime_type or "application/octet-stream",
             headers={
-                "Content-Disposition": (
-                    "attachment; "
-                    f"filename={db_lead.resume_original_filename or 'resume'}"
-                ),
-                "Content-Length": (
-                    str(db_lead.resume_size) if db_lead.resume_size else None
-                ),
+                "Content-Disposition": f"attachment; filename={db_lead.resume_original_filename or 'resume'}",
+                "Content-Length": str(db_lead.resume_size or 0)
+                if db_lead.resume_size
+                else "0",
             },
         )
-
     except Exception as e:
         logger.error(f"Error retrieving resume: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=500,
-            detail={"error": "Error retrieving resume", "details": str(e)},
-        )
+            status_code=500, detail="Error retrieving resume file"
+        ) from e
 
 
 @router.put("/{lead_id}", response_model=Lead)
@@ -259,17 +322,17 @@ def update_lead(
     Raises:
         HTTPException: If lead is not found
     """
-    db_lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    db_lead = db.query(LeadDB).filter(LeadDB.id == lead_id).first()
     if not db_lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    
+
     update_data = lead_update.dict(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_lead, key, value)
-    
+
     db.commit()
     db.refresh(db_lead)
-    return db_lead
+    return Lead.from_orm(db_lead)
 
 
 @router.put("/{lead_id}/reached-out", response_model=Lead)
@@ -287,20 +350,19 @@ def mark_lead_reached_out(lead_id: int, db: Session = Depends(get_db)) -> Lead:
     Raises:
         HTTPException: If lead is not found
     """
-    db_lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    db_lead = db.query(LeadDB).filter(LeadDB.id == lead_id).first()
     if not db_lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    
-    db_lead.status = LeadStatus.REACHED_OUT
+
+    # Update the status using the database model's enum
+    db_lead.status = DBLeadStatus.REACHED_OUT
     db.commit()
     db.refresh(db_lead)
-    return db_lead
+    return Lead.from_orm(db_lead)
 
 
 @router.delete("/{lead_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_lead(
-    lead_id: int, db: Session = Depends(get_db)
-) -> Response:
+def delete_lead(lead_id: int, db: Session = Depends(get_db)) -> Response:
     """
     Delete a lead.
 
@@ -314,10 +376,10 @@ def delete_lead(
     Raises:
         HTTPException: If lead is not found
     """
-    db_lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    db_lead = db.query(LeadDB).filter(LeadDB.id == lead_id).first()
     if not db_lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    
+
     db.delete(db_lead)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

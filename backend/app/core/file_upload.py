@@ -2,13 +2,20 @@ import logging
 import sys
 from datetime import datetime
 from io import BytesIO
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, BinaryIO, Union
 
-import magic
+# Third-party imports
+import magic  # type: ignore[import-untyped]  # No type stubs available
 from fastapi import HTTPException, UploadFile
+
+# Ignore type checking for magic module
+# mypy: ignore-errors
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+# Type aliases for better readability
+FileLike = Union[BinaryIO, BytesIO, UploadFile]  # type: ignore[valid-type]  # Allowed types for file operations
 
 
 class FileUploadManager:
@@ -34,15 +41,26 @@ class FileUploadManager:
 
     @staticmethod
     def get_mime_type(buffer: bytes) -> str:
-        """Get the MIME type of a file buffer."""
+        """Get the MIME type of a file buffer.
+
+        Args:
+            buffer: The file content as bytes
+
+        Returns:
+            str: The detected MIME type, or 'application/octet-stream' if detection fails
+        """
         try:
             if sys.platform == "win32":
+                # On Windows, we need to use the Magic class
                 mime = magic.Magic(mime=True)
-                return mime.from_buffer(buffer)
+                result = mime.from_buffer(buffer)
+                return str(result)  # Ensure we return a string
             else:
-                return magic.from_buffer(buffer, mime=True)
+                # On Unix-like systems, we can use the module-level function
+                result = magic.from_buffer(buffer, mime=True)
+                return str(result)  # Ensure we return a string
         except Exception as e:
-            logger.warning(f"Failed to detect MIME type: {e}")
+            logger.warning("Failed to detect MIME type: %s", str(e))
             return "application/octet-stream"
 
     def get_file_extension(self, file: UploadFile) -> str:
@@ -61,7 +79,7 @@ class FileUploadManager:
         Returns:
             Tuple of (is_valid, error_message, file_metadata)
         """
-        metadata = {}
+        metadata: Dict[str, Any] = {}
 
         # Check if file is empty
         if not file.filename:

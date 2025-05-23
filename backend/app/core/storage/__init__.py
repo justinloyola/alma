@@ -1,10 +1,12 @@
 """Storage abstraction layer for handling file storage across different backends."""
+
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, BinaryIO, Dict, Optional
 
-from app.db.models import LeadDB, StorageType
+from app.db.models import LeadDB
+from app.db.models import StorageType as StorageType
 
 
 class StorageBackend(ABC):
@@ -41,7 +43,12 @@ class StorageBackend(ABC):
 class FileSystemStorage(StorageBackend):
     """File system storage backend."""
 
-    def __init__(self, base_path: str = "uploads/resumes"):
+    def __init__(self, base_path: str = "uploads/resumes") -> None:
+        """Initialize the filesystem storage backend.
+
+        Args:
+            base_path: The base directory path for storing files.
+        """
         self.base_path = Path(base_path)
         self.base_path.mkdir(parents=True, exist_ok=True)
 
@@ -105,7 +112,8 @@ class FileSystemStorage(StorageBackend):
 class PostgresStorage(StorageBackend):
     """PostgreSQL storage backend for storing files in the database."""
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize the PostgreSQL storage backend."""
         from app.db.base import SessionLocal
 
         self.SessionLocal = SessionLocal
@@ -190,7 +198,21 @@ class PostgresStorage(StorageBackend):
 
 
 def get_storage(backend: StorageType = StorageType.FILESYSTEM) -> StorageBackend:
-    """Factory function to get the appropriate storage backend."""
-    if backend == StorageType.POSTGRES:
+    """
+    Factory function to get the appropriate storage backend.
+
+    Args:
+        backend: The storage backend type to use.
+
+    Returns:
+        An instance of the requested storage backend.
+
+    Raises:
+        ValueError: If the specified backend is not supported.
+    """
+    if backend == StorageType.FILESYSTEM:
+        return FileSystemStorage()
+    elif backend == StorageType.POSTGRES:
         return PostgresStorage()
-    return FileSystemStorage()
+    else:
+        raise ValueError(f"Unsupported storage backend: {backend}")
