@@ -162,9 +162,10 @@ This document outlines the requirements and specifications for a Lead Management
 
 ### 4.3 API Endpoints
 - [x] `POST /api/leads` - Create new lead
-- [ ] `GET /api/leads` - List all leads (paginated)
-- [ ] `GET /api/leads/{lead_id}` - Get lead details
-- [ ] `PATCH /api/leads/{lead_id}` - Update lead status
+- [x] `GET /api/leads` - List all leads (paginated)
+- [x] `GET /api/leads/{lead_id}` - Get lead details
+- [x] `PUT /api/leads/{lead_id}` - Update lead information (including status)
+- [x] `PUT /api/leads/{lead_id}/reached-out` - Mark lead as reached out (specialized endpoint)
 - [ ] `POST /api/auth/login` - User authentication
 - [ ] `POST /api/auth/refresh` - Refresh access token
 
@@ -172,7 +173,9 @@ This document outlines the requirements and specifications for a Lead Management
 - [x] Initial project setup
 - [x] Basic lead model and database schema
 - [x] Lead creation endpoint
-- [ ] Lead retrieval endpoints
+- [x] Lead retrieval endpoints
+  - [x] `GET /api/leads` (list all)
+  - [x] `GET /api/leads/{lead_id}` (single lead)
 - [ ] Authentication system
 - [ ] Email notifications
 - [ ] Internal dashboard UI
