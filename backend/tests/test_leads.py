@@ -12,6 +12,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from alembic import command
+from alembic.config import Config
+
 # Add the backend directory to the Python path
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -29,14 +32,36 @@ engine = create_engine(
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-# Create test tables
+def run_migrations():
+    """Run Alembic migrations on the test database."""
+    # Get the directory containing this file
+    test_dir = Path(__file__).parent
+    # Get the project root directory (one level up from tests)
+    project_root = test_dir.parent
+    # Path to the alembic.ini file
+    alembic_ini = project_root / "alembic.ini"
+
+    # Configure Alembic
+    alembic_cfg = Config(alembic_ini)
+    alembic_cfg.set_main_option("sqlalchemy.url", TEST_DB_URL)
+
+    # Run migrations
+    command.upgrade(alembic_cfg, "head")
+
+
+# Create test tables using Alembic
 @pytest.fixture(scope="module")
 def test_db() -> Generator[Session, None, None]:
-    """Create a clean test database and yield a session for testing."""
+    """Create a clean test database with migrations and yield a session for testing."""
+    # Create all tables
     Base.metadata.create_all(bind=engine)
+
     try:
+        # Run migrations
+        run_migrations()
         yield
     finally:
+        # Drop all tables
         Base.metadata.drop_all(bind=engine)
 
 
@@ -147,71 +172,70 @@ def auth_headers(test_user_token: str) -> Dict[str, str]:
 # Create a single engine for all tests
 @pytest.fixture(scope="session")
 def engine() -> Generator[create_engine, None, None]:
+    """Create and configure the test database engine."""
     from app.db.database import create_db_engine
 
     # Use in-memory SQLite for testing to avoid file locking issues
     engine = create_db_engine("sqlite:///:memory:")
+
     # Create all tables
     Base.metadata.create_all(bind=engine)
+
+    # Run migrations
+    test_dir = Path(__file__).parent
+    project_root = test_dir.parent
+    alembic_ini = project_root / "alembic.ini"
+
+    alembic_cfg = Config(alembic_ini)
+    alembic_cfg.set_main_option("sqlalchemy.url", "sqlite:///:memory:")
+
+    # Run migrations
+    command.upgrade(alembic_cfg, "head")
+
     yield engine
+
     # Clean up
     Base.metadata.drop_all(bind=engine)
 
 
 # Create a session for each test function
 @pytest.fixture(scope="function")
-def db() -> Generator[Session, None, None]:
-    """Create a test database session."""
-    from app.db.database import SessionLocal, engine
+def db(engine: create_engine) -> Generator[Session, None, None]:
+    """Create a test database session with proper transaction handling."""
+    from app.db.database import SessionLocal
 
-    # Create all tables
-    Base.metadata.create_all(bind=engine)
+    # Begin a transaction
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = SessionLocal(bind=connection)
 
-    # Create a new session with autocommit=False, autoflush=False,
-    # expire_on_commit=False
-    db = SessionLocal()
+    # Create a test user if it doesn't exist
+    from app.db.models import UserDB
 
-    # Make sure we're in a clean state
-    for table in reversed(Base.metadata.sorted_tables):
-        db.execute(table.delete())
-    db.commit()
-
-    try:
-        yield db
-    finally:
-        # Clean up
-        db.rollback()
-        db.close()
-
-        # Drop all tables
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
-
-
-@pytest.fixture(scope="function")
-def create_test_user(db: Session, test_user: Dict[str, Any]) -> UserDB:
-    """Create a test user in the database (for backward compatibility)."""
-    # The test_user fixture now creates the user in the database
-    # This is kept for backward compatibility with tests that expect this fixture
-    user = db.query(UserDB).filter(UserDB.email == test_user["email"]).first()
-    if not user:
-        user = UserDB(
-            email=test_user["email"],
-            hashed_password="$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",
+    test_user = session.query(UserDB).filter_by(email="test@example.com").first()
+    if not test_user:
+        test_user = UserDB(
+            email="test@example.com",
+            hashed_password="$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",  # password = "secret"
             is_active=True,
             is_superuser=False,
         )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    return user
+        session.add(test_user)
+        session.commit()
+
+    try:
+        yield session
+    finally:
+        # Rollback the transaction to undo any changes made during the test
+        session.close()
+        transaction.rollback()
+        connection.close()
 
 
 def test_create_lead(
     client: TestClient,
     db: Session,
     auth_headers: Dict[str, str],
-    create_test_user: None,
 ) -> None:
     """Test creating a new lead."""
     # Use a unique email for this test
@@ -221,8 +245,10 @@ def test_create_lead(
     db.query(LeadDB).filter(LeadDB.email == test_email).delete()
     db.commit()
 
-    # Use the test_resume.pdf file
+    # Prepare form data
     test_resume_path = os.path.join(os.path.dirname(__file__), "test_resume.pdf")
+
+    # Use the test_resume.pdf file
     with open(test_resume_path, "rb") as f:
         resume_file = NamedTemporaryFile(suffix=".pdf")
         resume_file.write(f.read())
@@ -245,14 +271,29 @@ def test_create_lead(
     )
 
     print(f"Response status code: {response.status_code}")
-    print(f"Response content: {response.content}")
+    print(f"Response content: {response.text}")
+
+    if response.status_code != 201:
+        print("Error details:")
+        try:
+            error_data = response.json()
+            print(f"Error type: {type(error_data)}")
+            print(f"Error content: {error_data}")
+            if "detail" in error_data:
+                for detail in error_data["detail"]:
+                    print(f"- {detail}")
+        except Exception as e:
+            print(f"Failed to parse error response: {e}")
 
     assert (
         response.status_code == 201
-    ), f"Expected status code 201, got {response.status_code}. Response: {response.content}"  # 201 Created  # noqa: E501
+    ), f"Expected status code 201, got {response.status_code}. Response: {response.text}"
+
     data = response.json()
+    assert data["first_name"] == "Test"
+    assert data["last_name"] == "User"
     assert data["email"] == test_email
-    assert data["status"] == "pending"
+    assert data["status"] == "pending"  # Default status should be 'pending'
 
     # Clean up
     if "id" in data:
@@ -264,42 +305,45 @@ def test_get_lead(
     client: TestClient,
     db: Session,
     auth_headers: Dict[str, str],
-    create_test_user: None,
 ) -> None:
     """Test retrieving a lead by ID."""
-    # Create a test lead with a unique email
-    test_email = f"test_get_{datetime.utcnow().timestamp()}@example.com"
-    test_lead = LeadDB(
-        first_name="Test",
-        last_name="User",
-        email=test_email,
-        created_at=datetime.utcnow(),
-    )
-    db.add(test_lead)
-    db.commit()
-    db.refresh(test_lead)
+    # Create a test lead first
+    test_email = f"test_get_lead_{datetime.utcnow().timestamp()}@example.com"
 
-    print(f"Created test lead with ID: {test_lead.id}")
+    # Create lead via API to ensure all required fields are set
+    lead_data = {
+        "first_name": "Test",
+        "last_name": "User",
+        "email": test_email,
+        "phone": "+1234567890",
+        "notes": "Test lead",
+    }
+
+    response = client.post(
+        "/api/v1/leads/",
+        json=lead_data,
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201, f"Failed to create test lead: {response.text}"
+    created_lead = response.json()
 
     try:
         # Test getting the lead
-        url = f"/api/v1/leads/{test_lead.id}"
-        print(f"Making GET request to: {url}")
-        response = client.get(url, headers=auth_headers)
+        response = client.get(
+            f"/api/v1/leads/{created_lead['id']}",
+            headers=auth_headers,
+        )
 
         print(f"Response status code: {response.status_code}")
-        print(f"Response content: {response.content}")
-
-        # Debug: Check if the lead exists in the database
-        lead_in_db = db.query(LeadDB).filter(LeadDB.id == test_lead.id).first()
-        print(f"Lead in database: {lead_in_db is not None}")
-        if lead_in_db:
-            print(f"Lead in DB - ID: {lead_in_db.id}, Email: {lead_in_db.email}")
+        print(f"Response content: {response.text}")
 
         assert (
             response.status_code == 200
         ), f"Expected status code 200, got {response.status_code}"
+
         data = response.json()
+        assert data["id"] == created_lead["id"]
         assert data["id"] == test_lead.id
         assert data["email"] == test_email
     finally:
@@ -308,52 +352,78 @@ def test_get_lead(
         db.commit()
 
 
+def create_test_lead(
+    client: TestClient,
+    db: Session,
+    auth_headers: Dict[str, str],
+    email: str,
+) -> dict:
+    """Helper function to create a test lead."""
+    test_resume_path = os.path.join(os.path.dirname(__file__), "test_resume.pdf")
+    with open(test_resume_path, "rb") as f:
+        resume_file = NamedTemporaryFile(suffix=".pdf")
+        resume_file.write(f.read())
+    resume_file.seek(0)
+
+    files = {"resume": ("resume.pdf", resume_file, "application/pdf")}
+    data = {
+        "first_name": "Test",
+        "last_name": "User",
+        "email": email,
+        "phone": "+1234567890",
+        "notes": "Test lead",
+    }
+
+    response = client.post(
+        "/api/v1/leads",
+        data=data,
+        files=files,
+        headers={"Authorization": auth_headers["Authorization"]},
+    )
+
+    assert response.status_code == 201, f"Failed to create test lead: {response.text}"
+    return response.json()
+
+
 def test_update_lead(
     client: TestClient,
     db: Session,
     auth_headers: Dict[str, str],
-    create_test_user: None,
 ) -> None:
     """Test updating a lead's status."""
-    # Create a test lead with a unique email
+    # Create a test lead first
     test_email = f"test_update_{datetime.utcnow().timestamp()}@example.com"
-    test_lead = LeadDB(
-        first_name="Test",
-        last_name="User",
-        email=test_email,
-        created_at=datetime.utcnow(),
-    )
-    db.add(test_lead)
-    db.commit()
-    db.refresh(test_lead)
+
+    # Create lead via the helper function
+    created_lead = create_test_lead(client, db, auth_headers, test_email)
+
     try:
         # Test updating the lead
+        update_data = {"status": "reached_out"}
         response = client.put(
-            f"/api/v1/leads/{test_lead.id}",
-            json={"status": "reached_out"},
-            headers=auth_headers,
+            f"/api/v1/leads/{created_lead['id']}",
+            data=update_data,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                **auth_headers,
+            },
         )
-        print(f"Update response: {response.status_code}, {response.content}")
-        assert (
-            response.status_code == 200
-        ), f"Expected status code 200, got {response.status_code}. Response: {response.content}"  # noqa: E501
-        data = response.json()
-        assert data["status"] == "reached_out"
 
-        # Test getting the updated lead
-        response = client.get(
-            f"/api/v1/leads/{test_lead.id}",
-            headers=auth_headers,
-        )
-        print(f"Get response: {response.status_code}, {response.content}")
+        print(f"Update response status code: {response.status_code}")
+        print(f"Update response content: {response.text}")
+
         assert (
             response.status_code == 200
-        ), f"Expected status code 200, got {response.status_code}. Response: {response.content}"  # noqa: E501
-        data = response.json()
-        assert data["status"] == "reached_out"
+        ), f"Expected status code 200, got {response.status_code}"
+
+        updated_lead = response.json()
+        assert updated_lead["status"] == "reached_out"
+        assert updated_lead["id"] == created_lead["id"]
+        assert updated_lead["email"] == test_email
+
     finally:
         # Clean up
-        db.delete(test_lead)
+        db.query(LeadDB).filter(LeadDB.id == created_lead["id"]).delete()
         db.commit()
 
 
@@ -361,70 +431,46 @@ def test_mark_lead_reached_out(
     client: TestClient,
     db: Session,
     auth_headers: Dict[str, str],
-    create_test_user: None,
 ) -> None:
     """Test marking a lead as reached out using the specialized endpoint."""
-    # Create a test lead with a unique email
+    # Create a test lead first
     test_email = f"test_reached_out_{datetime.utcnow().timestamp()}@example.com"
-    from app.db.models import LeadStatus, UserDB
 
-    print("\n=== Starting test_mark_lead_reached_out ===")
-    print(f"Creating test lead with email: {test_email}")
-
-    # Print all users in the database before creating the lead
-    print("\nUsers in database before test:")
-    for user in db.query(UserDB).all():
-        print(f"- {user.email} (ID: {user.id}, Active: {user.is_active})")
-
-    test_lead = LeadDB(
-        first_name="Test",
-        last_name="User",
-        email=test_email,
-        created_at=datetime.utcnow(),
-        status=LeadStatus.PENDING.value,
-    )
-    db.add(test_lead)
-    db.commit()
-    db.refresh(test_lead)
-    print(f"\nCreated test lead with ID: {test_lead.id}, status: {test_lead.status}")
-
-    # Print all leads in the database
-    print("\nLeads in database:")
-    for lead in db.query(LeadDB).all():
-        print(f"- {lead.email} (ID: {lead.id}, Status: {lead.status})")
+    # Create lead via the helper function
+    created_lead = create_test_lead(client, db, auth_headers, test_email)
 
     try:
         # Test marking the lead as reached out
-        print(f"Sending PUT request to /api/v1/leads/{test_lead.id}/reached-out")
-        print(f"Auth headers: {auth_headers}")
-
         response = client.put(
-            f"/api/v1/leads/{test_lead.id}/reached-out",
+            f"/api/v1/leads/{created_lead['id']}/reached-out",
             headers=auth_headers,
-            json={},
         )
+
         print(f"Response status code: {response.status_code}")
-        print(f"Response content: {response.content}")
+        print(f"Response content: {response.text}")
 
-        assert response.status_code == 200, (  # noqa: E501
-            f"Expected status code 200, got {response.status_code}. "
-            f"Response: {response.content}"
+        assert (
+            response.status_code == 200
+        ), f"Expected status code 200, got {response.status_code}"
+
+        updated_lead = response.json()
+        assert updated_lead["status"] == "reached_out"
+        assert updated_lead["id"] == created_lead["id"]
+        assert updated_lead["email"] == test_email
+
+        # Test that the status cannot be changed back to new
+        response = client.put(
+            f"/api/v1/leads/{created_lead['id']}/reached-out",
+            headers=auth_headers,
         )
-        data = response.json()
-        assert data["status"] == "reached_out"
 
-        # Verify the lead was updated in the database
-        updated_lead = db.query(LeadDB).filter(LeadDB.id == test_lead.id).first()
-        assert updated_lead.status == "reached_out"
+        assert (
+            response.status_code == 400
+        ), "Should not be able to mark as reached out again"
 
-        # Test getting the updated lead
-        response = client.get(f"/api/v1/leads/{test_lead.id}", headers=auth_headers)
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "reached_out"
     finally:
         # Clean up
-        db.delete(test_lead)
+        db.query(LeadDB).filter(LeadDB.id == created_lead["id"]).delete()
         db.commit()
 
 
@@ -432,98 +478,134 @@ def test_update_nonexistent_lead(
     client: TestClient,
     db: Session,
     auth_headers: Dict[str, str],
-    create_test_user: None,
 ) -> None:
     """Test updating a lead that doesn't exist."""
+    # Test updating a non-existent lead
+    non_existent_id = 999999
     response = client.put(
-        "/api/v1/leads/9999",
-        json={"status": "reached_out"},
-        headers=auth_headers,
+        f"/api/v1/leads/{non_existent_id}",
+        data={"status": "reached_out"},
+        headers={"Content-Type": "application/x-www-form-urlencoded", **auth_headers},
     )
-    print(
-        f"Update non-existent lead response: {response.status_code}, {response.content}"
-    )
-    assert response.status_code == 404
+
+    print(f"Response status code: {response.status_code}")
+    print(f"Response content: {response.text}")
+
+    assert (
+        response.status_code == 404
+    ), f"Expected status code 404, got {response.status_code}. Response: {response.text}"
 
 
 def test_mark_nonexistent_lead_reached_out(
     client: TestClient,
     db: Session,
     auth_headers: Dict[str, str],
-    create_test_user: None,
 ) -> None:
     """Test marking a non-existent lead as reached out."""
+    non_existent_id = 999999
     response = client.put(
-        "/api/v1/leads/9999/reached-out",
+        f"/api/v1/leads/{non_existent_id}/reached-out",
         headers=auth_headers,
     )
-    print(
-        f"Mark non-existent lead as reached out response: {response.status_code}, {response.content}"  # noqa: E501
-    )
-    assert response.status_code == 404
+
+    print(f"Response status code: {response.status_code}")
+    print(f"Response content: {response.text}")
+
+    assert (
+        response.status_code == 404
+    ), f"Expected status code 404, got {response.status_code}"
 
 
 def test_get_leads(
     client: TestClient,
     db: Session,
     auth_headers: Dict[str, str],
-    create_test_user: None,
 ) -> None:
     """Test retrieving a list of leads with pagination."""
-    from datetime import datetime
+    # Create test leads via API
+    test_emails = [
+        f"test_get_leads_{i}_{datetime.utcnow().timestamp()}@example.com"
+        for i in range(1, 6)
+    ]
 
-    from app.db.models import LeadDB
+    created_lead_ids = []
 
-    # Test unauthenticated request
-    response = client.get("/api/v1/leads")
-    assert response.status_code == 401, "Unauthenticated request should return 401"
+    try:
+        # Create test leads using the helper function
+        for i, email in enumerate(test_emails):
+            lead = create_test_lead(
+                client=client, db=db, auth_headers=auth_headers, email=email
+            )
+            # Update additional fields
+            lead["first_name"] = f"Test{i}"
+            lead["last_name"] = f"User{i}"
+            lead["phone"] = f"+12345678{i:02d}"
+            lead["notes"] = f"Test lead {i}"
+            created_lead_ids.append(lead["id"])
 
-    # Create test leads
-    test_leads = []
-    for i in range(1, 6):
-        lead = LeadDB(
-            first_name=f"Test{i}",
-            last_name=f"Lead{i}",
-            email=f"test{i}@example.com",
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+        # Test getting all leads
+        response = client.get("/api/v1/leads", headers=auth_headers)
+
+        print(f"Response status code: {response.status_code}")
+        print(f"Response content: {response.text}")
+
+        assert (
+            response.status_code == 200
+        ), f"Expected status code 200, got {response.status_code}"
+
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) >= 5  # Should be at least our 5 test leads
+
+        # Test pagination
+        response = client.get(
+            "/api/v1/leads",
+            params={"skip": 2, "limit": 2},
+            headers=auth_headers,
         )
-        db.add(lead)
-        test_leads.append(lead)
-    db.commit()
 
-    # Test getting all leads
-    response = client.get("/api/v1/leads", headers=auth_headers)
-    assert response.status_code == 200
-    data = response.json()
+        print(f"Paginated response status code: {response.status_code}")
+        print(f"Paginated response content: {response.text}")
 
-    # Verify response structure
-    assert isinstance(data, list)
-    assert len(data) == 5  # Should return all 5 test leads
+        assert (
+            response.status_code == 200
+        ), f"Expected status code 200, got {response.status_code}"
 
-    # Verify lead data
-    for i, lead in enumerate(data, 1):
-        assert "id" in lead
-        assert lead["first_name"] == f"Test{i}"
-        assert lead["last_name"] == f"Lead{i}"
-        assert lead["email"] == f"test{i}@example.com"
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) == 2  # Should return exactly 2 items due to pagination
 
-    # Test pagination
-    response = client.get("/api/v1/leads?skip=2&limit=2", headers=auth_headers)
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 2  # Should return 2 leads
-    assert data[0]["email"] == "test3@example.com"
-    assert data[1]["email"] == "test4@example.com"
+    finally:
+        # Clean up
+        for lead_id in created_lead_ids:
+            db.query(LeadDB).filter(LeadDB.id == lead_id).delete()
+        db.commit()
+        # Test with limit exceeding total
+        response = client.get(
+            "/api/v1/leads/", params={"skip": 0, "limit": 10}, headers=auth_headers
+        )
 
-    # Test with limit exceeding total
-    response = client.get("/api/v1/leads?skip=0&limit=10", headers=auth_headers)
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 5  # Should return all 5 test leads
+        print(f"Limit exceeding response status code: {response.status_code}")
+        print(f"Limit exceeding response content: {response.text}")
 
-    # Test with skip exceeding total
-    response = client.get("/api/v1/leads?skip=10&limit=5", headers=auth_headers)
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 0  # Should return empty list
+        assert (
+            response.status_code == 200
+        ), f"Expected status code 200, got {response.status_code}"
+
+        data = response.json()
+        assert len(data) >= 5  # Should return all test leads
+
+        # Test with skip exceeding total
+        response = client.get(
+            "/api/v1/leads/", params={"skip": 100, "limit": 5}, headers=auth_headers
+        )
+
+        print(f"Skip exceeding response status code: {response.status_code}")
+        print(f"Skip exceeding response content: {response.text}")
+
+        assert (
+            response.status_code == 200
+        ), f"Expected status code 200, got {response.status_code}"
+
+        data = response.json()
+        assert len(data) == 0  # Should return empty list

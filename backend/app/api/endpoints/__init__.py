@@ -5,13 +5,12 @@ from typing import List
 from fastapi import APIRouter
 
 # Local application imports
-from . import auth, leads
+from . import leads
 
 # Create a router for all endpoints
 router = APIRouter()
 
-# Include all endpoint routers
-router.include_router(auth.router, tags=["auth"])
+# Include endpoint routers
 router.include_router(leads.router, tags=["leads"])
 
 __all__: List[str] = ["router"]

@@ -1,6 +1,6 @@
 # Alma
 
-A modern web application with a FastAPI backend and React + TypeScript frontend.
+A modern web application with a FastAPI backend and React + TypeScript frontend, containerized with Docker.
 
 ## Project Structure
 
@@ -73,7 +73,117 @@ The API will be available at http://localhost:8000
 pytest
 ```
 
-## Frontend Setup
+## Docker Setup
+
+### Prerequisites
+
+- Docker 20.10.0 or higher
+- Docker Compose 1.29.0 or higher
+
+### Running with Docker Compose
+
+1. **Environment Setup**:
+   ```bash
+   # Copy and configure environment files
+   cd backend
+   cp .env.example .env
+   # Edit .env with your configuration
+   cd ..
+   ```
+
+2. **Build and Start the Application**:
+   ```bash
+   # Build and start all services in detached mode
+   docker-compose up --build -d
+   
+   # To see logs in real-time (run in a separate terminal)
+   docker-compose logs -f
+   ```
+
+3. **Access the Application**:
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:8000
+   - API Documentation: http://localhost:8000/docs
+   - Health Check: http://localhost:8000/health
+
+### Common Docker Compose Commands
+
+```bash
+# Stop all containers
+# docker-compose down
+
+# Stop and remove all containers, networks, and volumes
+# docker-compose down -v
+
+# Rebuild and restart a specific service (e.g., frontend)
+# docker-compose up --build -d frontend
+
+# View logs for a specific service
+# docker-compose logs -f backend
+
+# Run a command in a running container
+# docker-compose exec backend bash
+# docker-compose exec frontend sh
+```
+
+### Development vs Production
+
+- For development, use the default `docker-compose.yml` which includes hot-reloading for both frontend and backend
+- For production, consider using a separate `docker-compose.prod.yml` with production-optimized settings
+
+### Troubleshooting
+
+- If you make changes to environment variables, rebuild the containers:
+  ```bash
+  docker-compose up --build -d
+  ```
+  
+- If you encounter port conflicts, check for running containers:
+  ```bash
+  docker ps
+  docker stop <container_id>
+  ```
+
+- To completely reset everything:
+  ```bash
+  docker-compose down -v
+  docker system prune -a
+  ```
+
+### Useful Commands
+
+- View logs:
+  ```bash
+  docker-compose logs -f
+  ```
+
+- Stop the application:
+  ```bash
+  docker-compose down
+  ```
+
+- Rebuild containers:
+  ```bash
+  docker-compose up --build -d
+  ```
+
+### Development with Docker
+
+For development, you can mount your local source code into the containers:
+
+1. **Backend development**:
+   ```bash
+   docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+   ```
+
+2. **Frontend development**:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+## Frontend Setup (Development)
 
 ### Prerequisites
 

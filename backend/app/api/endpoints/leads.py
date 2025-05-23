@@ -1,5 +1,6 @@
 # Standard library imports
 import logging
+import os
 from io import BytesIO
 from typing import Any, List, Optional
 
@@ -17,6 +18,8 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+
+from app.core.email import send_lead_notification
 
 # Try to import magic for MIME type detection
 MAGIC_AVAILABLE = False
@@ -77,6 +80,42 @@ def safe_lead_status(status_value: Optional[str]) -> LeadStatus:
 router = APIRouter(prefix="/leads", tags=["leads"])
 
 
+# Register the POST endpoint for creating a new lead
+@router.post(
+    "",
+    response_model=Lead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new lead with resume upload",
+    description="Create a new lead with resume upload. This endpoint is public and doesn't require authentication.",
+)
+async def create_lead_route(
+    background_tasks: BackgroundTasks,
+    first_name: str = Form(..., min_length=1, max_length=100),
+    last_name: str = Form(..., min_length=1, max_length=100),
+    email: str = Form(..., pattern=r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"),
+    phone: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    resume: UploadFile = File(
+        ..., description="Resume file (PDF, JPG, or PNG, max 5MB)"
+    ),
+    storage_type: str = Form(
+        "filesystem", description="Storage type: 'filesystem' or 'postgres'"
+    ),
+    db: Session = Depends(get_db),
+):
+    return await create_lead(
+        background_tasks=background_tasks,
+        first_name=first_name,
+        last_name=last_name,
+        email=email,
+        phone=phone,
+        notes=notes,
+        resume=resume,
+        storage_type=storage_type,
+        db=db,
+    )
+
+
 # Endpoint for lead submission
 @router.post(
     "/",
@@ -91,6 +130,8 @@ async def create_lead(
     first_name: str = Form(..., min_length=1, max_length=100),
     last_name: str = Form(..., min_length=1, max_length=100),
     email: str = Form(..., pattern=r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"),
+    phone: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
     resume: UploadFile = File(
         ...,
         description="Resume file (PDF, JPG, or PNG, max 5MB)",
@@ -105,31 +146,47 @@ async def create_lead(
 
     This endpoint is public and doesn't require authentication.
     """
-    return await create_new_lead(
-        background_tasks=background_tasks,
-        first_name=first_name,
-        last_name=last_name,
-        email=email,
-        resume=resume,
-        storage_type=storage_type,
-        db=db,
-        current_user=None,  # No user for public endpoint
-    )
+    logger.info(f"[LEAD] Received new lead submission for {email}")
+
+    try:
+        # Create the lead
+        result = await create_new_lead(
+            background_tasks=background_tasks,
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            phone=phone,
+            notes=notes,
+            resume=resume,
+            storage_type=storage_type,
+            db=db,
+            current_user=None,  # No user for public endpoint
+        )
+
+        logger.info(f"[LEAD] Successfully processed lead for {email}")
+        return result
+
+    except HTTPException as he:
+        logger.error(f"[LEAD] Error creating lead: {str(he.detail)}")
+        raise
+    except Exception as e:
+        logger.error(f"[LEAD] Unexpected error creating lead: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while processing your request",
+        )
 
 
 @router.post("", response_model=Lead, status_code=status.HTTP_201_CREATED)
 async def create_new_lead(
     background_tasks: BackgroundTasks,
-    first_name: str = Form(..., min_length=1, max_length=100),
-    last_name: str = Form(..., min_length=1, max_length=100),
-    email: str = Form(..., pattern=r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"),
-    resume: UploadFile = File(
-        ...,
-        description="Resume file (PDF, JPG, or PNG, max 5MB)",
-    ),
-    storage_type: str = Form(
-        "filesystem", description="Storage type: 'filesystem' or 'postgres'"
-    ),
+    first_name: str = Form(...),
+    last_name: str = Form(...),
+    email: str = Form(...),
+    phone: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    resume: UploadFile = File(...),
+    storage_type: Optional[StorageType] = Form(StorageType.FILESYSTEM),
     db: Session = Depends(get_db),
     current_user: Optional[Any] = None,  # Optional authenticated user
 ) -> Lead:
@@ -151,14 +208,18 @@ async def create_new_lead(
     Raises:
         HTTPException: If lead exists or validation fails
     """
-    logger.info("Creating new lead for email: %s", email)
+    logger.info(f"[LEAD] Starting lead creation for {email}")
 
     # Check if lead with this email already exists
-    existing_lead = db.query(LeadDB).filter(LeadDB.email == email).first()
+    existing_lead = (
+        db.query(LeadDB)
+        .filter(LeadDB.email == email)
+        .first()
+    )
     if existing_lead:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"A lead with email {email} already exists",
+            detail="The lead with this email already exists in the system.",
         )
 
     try:
@@ -244,10 +305,60 @@ async def create_new_lead(
 
         logger.info("Successfully created lead with ID: %s", db_lead.id)
 
-        # Add background task if needed
-        if background_tasks:
-            logger.debug("Adding background task for new lead processing")
-            # background_tasks.add_task(process_new_lead, db_lead.id)
+        # Prepare email notification data
+        admin_email = os.getenv("ADMIN_EMAIL")
+        logger.info("[LEAD] Email Configuration:")
+        logger.info(f"[LEAD] - ADMIN_EMAIL: {admin_email}")
+        logger.info(f"[LEAD] - FROM_EMAIL: {os.getenv('FROM_EMAIL')}")
+        logger.info(
+            f"[LEAD] - SENDGRID_API_KEY exists: {bool(os.getenv('SENDGRID_API_KEY'))}"
+        )
+
+        if admin_email:
+            # Prepare lead data for email
+            lead_data = {
+                "id": db_lead.id,
+                "first_name": db_lead.first_name,
+                "last_name": db_lead.last_name,
+                "email": db_lead.email,
+                "phone": db_lead.phone or "Not provided",
+                "notes": db_lead.notes or "No additional notes",
+                "created_at": db_lead.created_at.isoformat()
+                if db_lead.created_at
+                else "Unknown",
+                "status": db_lead.status,
+            }
+
+            logger.info(f"[LEAD] Sending email notification for lead ID: {db_lead.id}")
+
+            # Import the function directly to avoid potential serialization issues
+            from app.core.email import send_lead_notification
+
+            # Create a wrapper function to run the async task
+            async def send_notification_task():
+                try:
+                    logger.info(
+                        f"[LEAD] Starting email notification task for lead ID: {lead_data['id']}"
+                    )
+                    from app.core.email import send_lead_notification
+
+                    result = await send_lead_notification(lead_data, [admin_email])
+                    logger.info(
+                        f"[LEAD] Email notification task completed with result: {result}"
+                    )
+                    return result
+                except Exception as e:
+                    logger.error(
+                        f"[LEAD] Error in email notification task: {str(e)}",
+                        exc_info=True,
+                    )
+                    return False
+
+            # Add the task to background tasks
+            background_tasks.add_task(send_notification_task)
+            logger.info("[LEAD] Email notification task added to background tasks")
+        else:
+            logger.warning("[LEAD] ADMIN_EMAIL not set, skipping email notification")
 
         # Create a new Lead instance using from_orm to handle the conversion
         lead = Lead.from_orm(db_lead)
@@ -295,6 +406,7 @@ def read_leads(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
 ) -> List[Lead]:
     """
     Retrieve all leads with pagination.
@@ -331,7 +443,11 @@ def read_leads(
     responses={404: {"description": "Lead not found"}},
     dependencies=[Depends(get_current_user)],
 )
-def read_lead(lead_id: int, db: Session = Depends(get_db)) -> Lead:
+def read_lead(
+    lead_id: int,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+) -> Lead:
     """
     Retrieve a specific lead by ID.
 
@@ -444,7 +560,10 @@ async def download_resume(
     dependencies=[Depends(get_current_user)],
 )
 def update_lead(
-    lead_id: int, lead_update: LeadUpdate, db: Session = Depends(get_db)
+    lead_id: int,
+    lead_update: LeadUpdate,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
 ) -> Lead:
     """
     Update a lead's information.
@@ -482,7 +601,11 @@ def update_lead(
     responses={404: {"description": "Lead not found"}},
     dependencies=[Depends(get_current_user)],
 )
-def mark_lead_reached_out(lead_id: int, db: Session = Depends(get_db)) -> Lead:
+def mark_lead_reached_out(
+    lead_id: int,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+) -> Lead:
     """
     Mark a lead as reached out.
 
@@ -519,6 +642,7 @@ def mark_lead_reached_out(lead_id: int, db: Session = Depends(get_db)) -> Lead:
 def delete_lead(
     lead_id: int,
     db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
 ) -> Response:
     """
     Delete a lead.

@@ -97,6 +97,21 @@ const App: React.FC = () => {
               <Route element={<ProtectedRoute />}>
                 <Route path="/leads" element={<LeadsTable />} />
               </Route>
+              <Route path="/debug" element={
+                <div>
+                  <h1>Debug Info</h1>
+                  <pre>{JSON.stringify({
+                    env: {
+                      VITE_API_BASE_URL: import.meta.env.VITE_API_BASE_URL,
+                      NODE_ENV: import.meta.env.NODE_ENV,
+                      MODE: import.meta.env.MODE,
+                      PROD: import.meta.env.PROD,
+                      DEV: import.meta.env.DEV,
+                    },
+                    location: window.location.href,
+                  }, null, 2)}</pre>
+                </div>
+              } />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           )}

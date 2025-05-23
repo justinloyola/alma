@@ -84,8 +84,12 @@ app.add_middleware(
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
-# Include the main API router with the /api/v1 prefix
-# The auth routes are already included in the api_router with their respective tags
+# Include the auth router without authentication
+from app.api.endpoints import auth as auth_router
+
+app.include_router(auth_router.router, prefix="/api/v1/auth", tags=["auth"])
+
+# Include the main API router with the /api/v1 prefix and authentication
 app.include_router(
     api_router, prefix="/api/v1", dependencies=[Depends(deps.get_current_active_user)]
 )

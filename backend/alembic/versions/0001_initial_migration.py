@@ -159,24 +159,16 @@ def upgrade() -> None:
     op.create_index(op.f("ix_users_email"), "users", ["email"], unique=True)
     op.create_index(op.f("ix_leads_email"), "leads", ["email"], unique=True)
 
-    # Add CHECK constraints for enums
-    op.create_check_constraint(
-        "ck_leads_resume_storage_type",
-        "leads",
-        "resume_storage_type IN ('filesystem', 'postgres')",
-    )
-
-    op.create_check_constraint(
-        "ck_leads_status", "leads", "status IN ('pending', 'reached_out')"
-    )
+    # Note: Check constraints are handled at the application level for SQLite compatibility
+    # as SQLite has limited ALTER TABLE support
 
 
 def downgrade() -> None:
     """Downgrade database schema by one revision."""
-    # Drop tables
+    # Drop indexes
     op.drop_index(op.f("ix_leads_email"), table_name="leads")
-    op.drop_table("leads")
     op.drop_index(op.f("ix_users_email"), table_name="users")
-    op.drop_table("users")
 
-    # Note: Enums will be dropped automatically when the tables are dropped
+    # Drop tables
+    op.drop_table("leads")
+    op.drop_table("users")

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import { formDataApi } from '../config/axios';
 
 interface LeadFormData {
   firstName: string;
@@ -60,14 +60,7 @@ const LeadForm: React.FC = () => {
       // Phone field has been removed
       formDataToSend.append('resume', formData.resume);
 
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
-      const baseUrl = apiBaseUrl || '';
-
-      const response = await axios.post(`${baseUrl}/api/v1/leads`, formDataToSend, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      const response = await formDataApi.post('/api/v1/leads', formDataToSend);
 
       setSubmitStatus({
         success: true,

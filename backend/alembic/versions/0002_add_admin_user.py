@@ -50,33 +50,42 @@ def upgrade() -> None:
     ).fetchone()
 
     if not result:
-        # Create admin user
+        # Create admin user using raw SQL to avoid SQLite compatibility issues
         hashed_password = get_password_hash(admin_password)
-        now = datetime.utcnow()
+        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Using SQLAlchemy Core to insert the admin user
-        op.bulk_insert(
-            sa.table(
-                "users",
-                sa.column("email", sa.String),
-                sa.column("hashed_password", sa.String),
-                sa.column("full_name", sa.String),
-                sa.column("is_active", sa.Boolean),
-                sa.column("is_superuser", sa.Boolean),
-                sa.column("created_at", sa.DateTime),
-                sa.column("updated_at", sa.DateTime),
+        # Using raw SQL to insert the admin user
+        connection.execute(
+            text(
+                """
+                INSERT INTO users (
+                    email,
+                    hashed_password,
+                    full_name,
+                    is_active,
+                    is_superuser,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    :email,
+                    :hashed_password,
+                    :full_name,
+                    :is_active,
+                    :is_superuser,
+                    :created_at,
+                    :updated_at
+                )
+            """
             ),
-            [
-                {
-                    "email": admin_email,
-                    "hashed_password": hashed_password,
-                    "full_name": "Admin User",
-                    "is_active": True,
-                    "is_superuser": True,
-                    "created_at": now,
-                    "updated_at": now,
-                }
-            ],
+            {
+                "email": admin_email,
+                "hashed_password": hashed_password,
+                "full_name": "Admin User",
+                "is_active": 1,  # SQLite uses 1/0 for booleans
+                "is_superuser": 1,
+                "created_at": now,
+                "updated_at": now,
+            },
         )
         print(f"Created admin user: {admin_email}")
     else:
@@ -97,6 +106,4 @@ def downgrade() -> None:
     print(f"Removed admin user: {admin_email}")
 
     # Note: We don't drop the users table here as it might contain other data
-    # op.execute("""
-    #     SELECT setval('users_id_seq', (SELECT COALESCE(MAX(id), 1) FROM users));
-    # """)  # noqa: E501
+    # For SQLite, we don't need to reset sequences as it handles this automatically

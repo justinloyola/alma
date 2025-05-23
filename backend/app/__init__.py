@@ -4,6 +4,7 @@ Alma API application package.
 
 # Standard library imports
 import logging
+import os
 
 # Third-party imports
 from fastapi import FastAPI
@@ -22,6 +23,9 @@ from app.models.user import User  # noqa: F401
 
 __version__ = "0.1.0"
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
 # Create FastAPI app instance
 app = FastAPI(
     title="Alma API",
@@ -31,13 +35,22 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
-# Initialize database tables (for development only)
-# Note: In production, you should use migrations instead
+# Run Alembic migrations programmatically
 try:
-    Base.metadata.create_all(bind=engine)
-except Exception:
-    logger = logging.getLogger(__name__)
-    logger.exception("Error initializing database")
+    from alembic import command
+    from alembic.config import Config
+
+    # Get the directory containing alembic.ini
+    alembic_ini_path = os.path.join(os.path.dirname(__file__), "..", "alembic.ini")
+
+    # Create Alembic config and set the script location
+    alembic_cfg = Config(alembic_ini_path)
+
+    # Run migrations
+    command.upgrade(alembic_cfg, "head")
+    logger.info("Database migrations applied successfully")
+except Exception as e:
+    logger.error(f"Error applying database migrations: {e}")
     raise
 
 # Include the API router with the /api/v1 prefix
