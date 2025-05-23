@@ -1,15 +1,9 @@
 # Standard library imports
 import logging
 from io import BytesIO
-from typing import List, Optional
+from typing import Any, List, Optional
 
 # Third-party imports
-try:
-    import magic
-
-    MAGIC_AVAILABLE = True
-except ImportError:
-    MAGIC_AVAILABLE = False
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -17,18 +11,34 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Response,
     UploadFile,
     status,
-    Response,
 )
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+# Try to import magic for MIME type detection
+MAGIC_AVAILABLE = False
+magic_inst = None
+try:
+    import magic
+
+    magic_inst = magic.Magic(mime=True)
+    MAGIC_AVAILABLE = True
+except (ImportError, OSError):
+    # Fall back to file extension if python-magic is not available
+    pass
+
 # Local application imports
-from app.core.storage import StorageType, get_storage
-from app.db.base import get_db
-from app.db.models import LeadDB, LeadStatus as DBLeadStatus
-from app.models.lead import Lead, LeadCreate, LeadUpdate, LeadStatus
+# These need to be imported after any sys.path modifications
+# Import this last to avoid circular imports
+from app.api.deps import get_current_user  # noqa: E402
+from app.core.storage import StorageType, get_storage  # noqa: E402
+from app.db.base import get_db  # noqa: E402
+from app.db.models import LeadDB  # noqa: E402
+from app.db.models import LeadStatus as DBLeadStatus
+from app.models.lead import Lead, LeadCreate, LeadStatus, LeadUpdate  # noqa: E402
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -67,6 +77,46 @@ def safe_lead_status(status_value: Optional[str]) -> LeadStatus:
 router = APIRouter(prefix="/leads", tags=["leads"])
 
 
+# Endpoint for lead submission
+@router.post(
+    "/",
+    response_model=Lead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new lead",
+    response_description="The created lead",
+    include_in_schema=True,
+)
+async def create_lead(
+    background_tasks: BackgroundTasks,
+    first_name: str = Form(..., min_length=1, max_length=100),
+    last_name: str = Form(..., min_length=1, max_length=100),
+    email: str = Form(..., pattern=r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"),
+    resume: UploadFile = File(
+        ...,
+        description="Resume file (PDF, JPG, or PNG, max 5MB)",
+    ),
+    storage_type: str = Form(
+        "filesystem", description="Storage type: 'filesystem' or 'postgres'"
+    ),
+    db: Session = Depends(get_db),
+) -> Lead:
+    """
+    Create a new lead with resume upload.
+
+    This endpoint is public and doesn't require authentication.
+    """
+    return await create_new_lead(
+        background_tasks=background_tasks,
+        first_name=first_name,
+        last_name=last_name,
+        email=email,
+        resume=resume,
+        storage_type=storage_type,
+        db=db,
+        current_user=None,  # No user for public endpoint
+    )
+
+
 @router.post("", response_model=Lead, status_code=status.HTTP_201_CREATED)
 async def create_new_lead(
     background_tasks: BackgroundTasks,
@@ -81,6 +131,7 @@ async def create_new_lead(
         "filesystem", description="Storage type: 'filesystem' or 'postgres'"
     ),
     db: Session = Depends(get_db),
+    current_user: Optional[Any] = None,  # Optional authenticated user
 ) -> Lead:
     """
     Create a new lead with resume upload.
@@ -121,8 +172,14 @@ async def create_new_lead(
 
         # Get the file content and MIME type
         file_content = await resume.read()
-        mime = magic.Magic(mime=True)
-        mime_type = mime.from_buffer(file_content)
+        if MAGIC_AVAILABLE and magic_inst is not None:
+            mime_type = magic_inst.from_buffer(file_content)
+        else:
+            # Fall back to file extension if magic is not available
+            file_extension = ""
+            if resume.filename and "." in resume.filename:
+                file_extension = resume.filename.split(".")[-1].lower()
+            mime_type = file_extension
 
         # Save the uploaded file
         storage_type_enum = (
@@ -170,14 +227,16 @@ async def create_new_lead(
             first_name=lead_dict["first_name"],
             last_name=lead_dict["last_name"],
             email=lead_dict["email"],
-            status=lead_dict.get("status", LeadStatus.PENDING),
+            status=lead_dict.get(
+                "status", LeadStatus.PENDING
+            ).value,  # Convert enum to string
             resume_path=file_info_dict.get("file_path"),
             resume_original_filename=file_info_dict.get("original_filename"),
             resume_mime_type=file_info_dict.get("content_type"),
             resume_size=file_info_dict.get("size"),
-            resume_storage_type=StorageType(storage_type)
+            resume_storage_type=storage_type
             if storage_type
-            else StorageType.FILESYSTEM,
+            else StorageType.FILESYSTEM.value,  # Ensure string value
         )
         db.add(db_lead)
         db.commit()
@@ -190,21 +249,8 @@ async def create_new_lead(
             logger.debug("Adding background task for new lead processing")
             # background_tasks.add_task(process_new_lead, db_lead.id)
 
-        # Create a new Lead instance with the required fields
-        lead = Lead(
-            id=db_lead.id,
-            first_name=db_lead.first_name,
-            last_name=db_lead.last_name,
-            email=db_lead.email,
-            status=LeadStatus(db_lead.status),  # Convert to the correct enum type
-            created_at=db_lead.created_at,
-            updated_at=db_lead.updated_at,
-            resume_path=db_lead.resume_path,
-            resume_original_filename=db_lead.resume_original_filename,
-            resume_mime_type=db_lead.resume_mime_type,
-            resume_size=db_lead.resume_size,
-            resume_storage_type=db_lead.resume_storage_type,
-        )
+        # Create a new Lead instance using from_orm to handle the conversion
+        lead = Lead.from_orm(db_lead)
         return lead
 
     except ValueError as e:
@@ -239,9 +285,16 @@ async def create_new_lead(
         ) from e
 
 
-@router.get("", response_model=List[Lead])
+@router.get(
+    "",
+    response_model=List[Lead],
+    summary="List all leads",
+    response_description="A list of leads",
+)
 def read_leads(
-    skip: int = 0, limit: int = 100, db: Session = Depends(get_db)
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
 ) -> List[Lead]:
     """
     Retrieve all leads with pagination.
@@ -250,31 +303,8 @@ def read_leads(
         # Query the database
         db_leads = db.query(LeadDB).offset(skip).limit(limit).all()
 
-        # Convert database models to Pydantic models
-        leads = []
-        for lead in db_leads:
-            lead_dict = {
-                "id": lead.id,
-                "first_name": lead.first_name,
-                "last_name": lead.last_name,
-                "email": lead.email,
-                "status": LeadStatus(lead.status)
-                if lead.status
-                else LeadStatus.PENDING,
-                "created_at": lead.created_at,
-                "updated_at": lead.updated_at,
-            }
-
-            # Add optional fields
-            if hasattr(lead, "resume_path") and lead.resume_path:
-                lead_dict["resume_path"] = lead.resume_path
-            if (
-                hasattr(lead, "resume_original_filename")
-                and lead.resume_original_filename
-            ):
-                lead_dict["resume_original_filename"] = lead.resume_original_filename
-
-            leads.append(Lead(**lead_dict))
+        # Convert database models to Pydantic models using from_orm
+        leads = [Lead.from_orm(lead) for lead in db_leads]
 
         return leads
 
@@ -293,7 +323,14 @@ def read_leads(
         )
 
 
-@router.get("/{lead_id}", response_model=Lead)
+@router.get(
+    "/{lead_id}",
+    response_model=Lead,
+    summary="Get lead by ID",
+    response_description="The lead with the given ID",
+    responses={404: {"description": "Lead not found"}},
+    dependencies=[Depends(get_current_user)],
+)
 def read_lead(lead_id: int, db: Session = Depends(get_db)) -> Lead:
     """
     Retrieve a specific lead by ID.
@@ -301,6 +338,7 @@ def read_lead(lead_id: int, db: Session = Depends(get_db)) -> Lead:
     Args:
         lead_id: ID of the lead to retrieve
         db: Database session
+        current_user: Current user making the request
 
     Returns:
         Lead object
@@ -313,22 +351,8 @@ def read_lead(lead_id: int, db: Session = Depends(get_db)) -> Lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
     try:
-        return Lead(
-            id=db_lead.id,
-            first_name=db_lead.first_name,
-            last_name=db_lead.last_name,
-            email=db_lead.email,
-            status=LeadStatus(db_lead.status) if db_lead.status else LeadStatus.PENDING,
-            created_at=db_lead.created_at,
-            updated_at=db_lead.updated_at,
-            resume_path=db_lead.resume_path,
-            resume_original_filename=db_lead.resume_original_filename,
-            resume_mime_type=db_lead.resume_mime_type,
-            resume_size=db_lead.resume_size,
-            resume_storage_type=db_lead.resume_storage_type.value
-            if db_lead.resume_storage_type
-            else None,
-        )
+        # Convert database model to Pydantic model using from_orm
+        return Lead.from_orm(db_lead)
     except Exception as e:
         logger.error(
             f"Error processing lead {lead_id}",
@@ -341,7 +365,16 @@ def read_lead(lead_id: int, db: Session = Depends(get_db)) -> Lead:
         )
 
 
-@router.get("/{lead_id}/resume")
+@router.get(
+    "/{lead_id}/resume",
+    summary="Download lead's resume",
+    response_description="The resume file",
+    responses={
+        200: {"content": {"application/octet-stream": {}}},
+        404: {"description": "Lead or resume not found"},
+    },
+    dependencies=[Depends(get_current_user)],
+)
 async def download_resume(
     lead_id: int, db: Session = Depends(get_db)
 ) -> StreamingResponse:
@@ -351,6 +384,7 @@ async def download_resume(
     Args:
         lead_id: ID of the lead whose resume to download
         db: Database session
+        current_user: Current user making the request
 
     Returns:
         Streaming response with the resume file
@@ -382,7 +416,10 @@ async def download_resume(
             file_obj,
             media_type=db_lead.resume_mime_type or "application/octet-stream",
             headers={
-                "Content-Disposition": f"attachment; filename={db_lead.resume_original_filename or 'resume'}",
+                "Content-Disposition": (
+                    f"attachment; filename="
+                    f"{db_lead.resume_original_filename or 'resume'}"
+                ),
                 "Content-Length": str(db_lead.resume_size or 0)
                 if db_lead.resume_size
                 else "0",
@@ -395,7 +432,17 @@ async def download_resume(
         ) from e
 
 
-@router.put("/{lead_id}", response_model=Lead)
+@router.put(
+    "/{lead_id}",
+    response_model=Lead,
+    summary="Update a lead",
+    response_description="The updated lead",
+    responses={
+        404: {"description": "Lead not found"},
+        400: {"description": "Invalid status value"},
+    },
+    dependencies=[Depends(get_current_user)],
+)
 def update_lead(
     lead_id: int, lead_update: LeadUpdate, db: Session = Depends(get_db)
 ) -> Lead:
@@ -406,6 +453,7 @@ def update_lead(
         lead_id: ID of the lead to update
         lead_update: Fields to update (all optional)
         db: Database session
+        current_user: Current user making the request
 
     Returns:
         Updated lead object
@@ -426,7 +474,14 @@ def update_lead(
     return Lead.from_orm(db_lead)
 
 
-@router.put("/{lead_id}/reached-out", response_model=Lead)
+@router.put(
+    "/{lead_id}/reached-out",
+    response_model=Lead,
+    summary="Mark lead as reached out",
+    response_description="The updated lead",
+    responses={404: {"description": "Lead not found"}},
+    dependencies=[Depends(get_current_user)],
+)
 def mark_lead_reached_out(lead_id: int, db: Session = Depends(get_db)) -> Lead:
     """
     Mark a lead as reached out.
@@ -434,6 +489,7 @@ def mark_lead_reached_out(lead_id: int, db: Session = Depends(get_db)) -> Lead:
     Args:
         lead_id: ID of the lead to mark as reached out
         db: Database session
+        current_user: Current user making the request
 
     Returns:
         Updated lead object
@@ -452,8 +508,18 @@ def mark_lead_reached_out(lead_id: int, db: Session = Depends(get_db)) -> Lead:
     return Lead.from_orm(db_lead)
 
 
-@router.delete("/{lead_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_lead(lead_id: int, db: Session = Depends(get_db)) -> Response:
+@router.delete(
+    "/{lead_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a lead",
+    response_description="No content",
+    responses={404: {"description": "Lead not found"}},
+    dependencies=[Depends(get_current_user)],
+)
+def delete_lead(
+    lead_id: int,
+    db: Session = Depends(get_db),
+) -> Response:
     """
     Delete a lead.
 

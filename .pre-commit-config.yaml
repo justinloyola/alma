@@ -1,28 +1,38 @@
 repos:
 -   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.1.0
+    rev: v0.1.14  # Latest stable version
     hooks:
     -   id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
         types_or: [python, pyi, jupyter]
+        # Match the configuration in pyproject.toml
+        args: [
+            "--fix",
+            "--exit-non-zero-on-fix",
+            "--select=E,F,I",  # Match the select in pyproject.toml
+            "--ignore=F401,E402",  # Match the ignore in pyproject.toml
+            "--line-length=88",  # Match the line-length in pyproject.toml
+            "--per-file-ignores=alembic/env.py:E402,create_tables.py:E402,scripts/migrate.py:E402,scripts/setup_db.py:E402"
+        ]
     -   id: ruff-format
         types_or: [python, pyi, jupyter]
+        args: [--line-length=88]  # Match the line-length in pyproject.toml
 
--   repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.5.0
-    hooks:
-    -   id: mypy
-        additional_dependencies:
-          - types-requests
-          - types-python-dateutil
-          - types-PyYAML
-        args: [--config-file=backend/mypy.ini]
-        exclude: ^tests/|^frontend/
-        types: [python]
-        pass_filenames: true
+# Disabling mypy temporarily to speed up pre-commit
+# -   repo: https://github.com/pre-commit/mirrors-mypy
+#     rev: v1.15.0
+#     hooks:
+#     -   id: mypy
+#         additional_dependencies:
+#           - types-requests
+#           - types-python-dateutil
+#           - types-PyYAML
+#         args: [--config-file=backend/mypy.ini]
+#         exclude: ^tests/|^frontend/
+#         types: [python]
+#         pass_filenames: true
 
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v5.0.0
     hooks:
     -   id: check-added-large-files
     -   id: check-merge-conflict

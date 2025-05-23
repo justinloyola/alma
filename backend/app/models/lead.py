@@ -1,7 +1,7 @@
 # Standard library imports
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 # Third-party imports
 from pydantic import BaseModel, EmailStr, Field, validator
@@ -25,6 +25,12 @@ class LeadBase(BaseModel):
     status: LeadStatus = Field(
         default=LeadStatus.PENDING, description="Current status of the lead"
     )
+    created_at: Optional[datetime] = Field(
+        None, description="Timestamp when the lead was created"
+    )
+    updated_at: Optional[datetime] = Field(
+        None, description="Timestamp when the lead was last updated"
+    )
 
     class Config:
         json_schema_extra = {
@@ -40,7 +46,20 @@ class LeadBase(BaseModel):
 class LeadCreate(LeadBase):
     """Schema for creating a new lead."""
 
-    pass
+    # Explicitly include these fields with default values to avoid mypy errors
+    created_at: Optional[datetime] = Field(
+        default_factory=datetime.utcnow,
+        description="Timestamp when the lead was created",
+    )
+    updated_at: Optional[datetime] = Field(
+        default_factory=datetime.utcnow,
+        description="Timestamp when the lead was last updated",
+    )
+
+    # Override status with a default value
+    status: LeadStatus = Field(
+        default=LeadStatus.PENDING, description="Current status of the lead"
+    )
 
 
 class LeadUpdate(BaseModel):
@@ -88,9 +107,11 @@ class Lead(LeadBase):
     """Complete Lead schema including read-only fields."""
 
     id: int = Field(..., description="Unique identifier for the lead")
-    created_at: datetime = Field(..., description="Timestamp when the lead was created")
-    updated_at: datetime = Field(
-        ..., description="Timestamp when the lead was last updated"
+    created_at: Optional[datetime] = Field(
+        None, description="Timestamp when the lead was created"
+    )
+    updated_at: Optional[datetime] = Field(
+        None, description="Timestamp when the lead was last updated"
     )
 
     # Internal fields that should not be exposed in the API
@@ -99,6 +120,32 @@ class Lead(LeadBase):
     resume_mime_type: Optional[str] = Field(None, exclude=True)
     resume_size: Optional[int] = Field(None, exclude=True)
     resume_storage_type: Optional[str] = Field(None, exclude=True)
+
+    @classmethod
+    def from_orm(cls, obj: Any) -> "Lead":
+        """Convert ORM model to Pydantic model."""
+        if not obj:
+            raise ValueError("Cannot create Lead from None")
+
+        # Convert status to enum if it's a string
+        status = obj.status
+        if isinstance(status, str):
+            status = LeadStatus(status)
+
+        return cls(
+            id=obj.id,
+            first_name=obj.first_name,
+            last_name=obj.last_name,
+            email=obj.email,
+            status=status,
+            created_at=obj.created_at,
+            updated_at=obj.updated_at,
+            resume_path=obj.resume_path,
+            resume_original_filename=obj.resume_original_filename,
+            resume_mime_type=obj.resume_mime_type,
+            resume_size=obj.resume_size,
+            resume_storage_type=obj.resume_storage_type,
+        )
 
     class Config:
         from_attributes = True

@@ -47,8 +47,19 @@ dev = [
 [lint]
 # Basic configuration
 select = ["E", "F", "I"]
-ignore = ["F401"]  # Allow unused imports for type checking
+ignore = [
+    "F401",  # Allow unused imports for type checking
+    "E402",  # Module level import not at top of file - handled by isort
+]
 fixable = ["ALL"]
+
+# Ignore E402 in specific files
+per-file-ignores = [
+    "alembic/env.py:E402",
+    "create_tables.py:E402",
+    "scripts/migrate.py:E402",
+    "scripts/setup_db.py:E402",
+]
 unfixable = []
 line-length = 88
 

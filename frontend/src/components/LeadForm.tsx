@@ -63,7 +63,7 @@ const LeadForm: React.FC = () => {
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
       const baseUrl = apiBaseUrl || '';
 
-      const response = await axios.post(`${baseUrl}/api/leads`, formDataToSend, {
+      const response = await axios.post(`${baseUrl}/api/v1/leads`, formDataToSend, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },

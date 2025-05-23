@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 
 # Local application imports
 from app.core.storage import StorageType
-from app.db.models import LeadDB, LeadStatus, BaseModelWithId
+from app.db.models import BaseModelWithId, LeadDB, LeadStatus
 from app.models.lead import LeadCreate, LeadUpdate
+
 from .base import BaseRepository
 
 # Create a new type variable that's bound to BaseModelWithId

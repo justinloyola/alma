@@ -2,7 +2,7 @@ import logging
 import sys
 from datetime import datetime
 from io import BytesIO
-from typing import Any, Dict, Optional, Tuple, BinaryIO, Union
+from typing import Any, BinaryIO, Dict, Optional, Tuple, Union
 
 # Third-party imports
 import magic  # type: ignore[import-untyped]  # No type stubs available
@@ -47,7 +47,8 @@ class FileUploadManager:
             buffer: The file content as bytes
 
         Returns:
-            str: The detected MIME type, or 'application/octet-stream' if detection fails
+            str: The detected MIME type, or 'application/octet-stream' if
+                detection fails
         """
         try:
             if sys.platform == "win32":
@@ -155,9 +156,9 @@ class FileUploadManager:
         Raises:
             HTTPException: If there's an error saving the file
         """
-        from app.core.storage import get_storage
+        from app.core.storage import StorageType, get_storage
         from app.db.base import SessionLocal
-        from app.db.models import LeadDB, StorageType
+        from app.db.models import LeadDB
 
         db = SessionLocal()
         try:

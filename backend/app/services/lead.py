@@ -2,7 +2,8 @@
 from typing import Any, Dict, Optional
 
 # Third-party imports
-from fastapi import HTTPException, UploadFile, status as http_status
+from fastapi import HTTPException, UploadFile
+from fastapi import status as http_status
 from sqlalchemy.orm import Session
 
 # Local application imports

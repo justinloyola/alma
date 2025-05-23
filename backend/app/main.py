@@ -4,37 +4,29 @@ import os
 from typing import Awaitable, Callable, Dict
 
 # Third-party imports
-from fastapi import FastAPI, Request, status
+from fastapi import Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.types import Receive, Scope, Send
 
+# Import the FastAPI app instance after all other imports to avoid circular imports
+# This needs to be after the imports that the app module depends on
+from app import app  # noqa: E402
+from app.api import deps
+from app.api.endpoints import router as api_router  # noqa: E402
+
 # Local application imports
-from app.api.endpoints import router as api_router
+from app.core.config import settings
 from app.core.logging_config import setup_logging
-from app.db.base import Base, engine
 
 # Initialize logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
-
 # Create uploads directory if it doesn't exist
 os.makedirs("uploads/resumes", exist_ok=True)
-
-app = FastAPI(
-    title="Alma API",
-    description="Backend API for the Alma application",
-    version="0.1.0",
-    docs_url="/api/docs",
-    openapi_url="/api/openapi.json",
-    on_startup=[],
-    on_shutdown=[],
-)
 
 
 # Define a type for the ASGI application callable
@@ -76,10 +68,7 @@ async def log_requests(
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-    ],  # React and Vite dev servers
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -95,11 +84,14 @@ app.add_middleware(
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
-# Include API router
-app.include_router(api_router, prefix="/api")
+# Include the main API router with the /api/v1 prefix
+# The auth routes are already included in the api_router with their respective tags
+app.include_router(
+    api_router, prefix="/api/v1", dependencies=[Depends(deps.get_current_active_user)]
+)
 
 
-@app.get("/api/health", status_code=status.HTTP_200_OK, tags=["health"])
+@app.get("/api/v1/health", status_code=status.HTTP_200_OK, tags=["health"])
 async def health_check() -> Dict[str, str]:
     """
     Health check endpoint.

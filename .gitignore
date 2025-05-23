@@ -50,6 +50,9 @@ yarn-error.log*
 *.sqlite3
 *.db
 
+# Uploads
+/uploads/
+
 # Uploads and static files
 /backend/uploads/
 /staticfiles/

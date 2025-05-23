@@ -3,60 +3,100 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import JSON, DateTime, Enum, Integer, String
+from passlib.context import CryptContext
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    Integer,
+    String,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base as BaseModelWithId
+from app.core.storage import StorageType
 
-__all__ = ["BaseModelWithId", "LeadDB", "StorageType", "LeadStatus"]
+from .base import BaseModelWithId
 
+__all__ = ["LeadDB", "UserDB", "LeadStatus"]
 
-class StorageType(str, enum.Enum):
-    FILESYSTEM = "filesystem"
-    POSTGRES = "postgres"
+# Password hashing context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class LeadStatus(str, enum.Enum):
+    """Enum for lead statuses."""
+
     PENDING = "pending"
     REACHED_OUT = "reached_out"
 
 
-class LeadDB(BaseModelWithId):
-    __tablename__ = "leads"
+class UserDB(BaseModelWithId):
+    """User database model."""
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    __tablename__ = "users"
+
+    email: Mapped[str] = mapped_column(
+        String(255), unique=True, index=True, nullable=False
+    )
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Relationships (none needed for now)
+
+    def set_password(self, password: str) -> None:
+        """Hash and set the user's password."""
+        self.hashed_password = pwd_context.hash(password)
+
+    def verify_password(self, password: str) -> bool:
+        """Verify a password against the stored hash."""
+        return pwd_context.verify(password, self.hashed_password)
+
+    def __repr__(self) -> str:
+        return f"<UserDB(id={self.id}, email={self.email})>"
+
+
+class LeadDB(BaseModelWithId):
+    """Lead database model."""
+
+    __tablename__ = "leads"
+    __table_args__ = (
+        CheckConstraint(
+            "resume_storage_type IN ('filesystem', 'postgres')",
+            name="ck_leads_resume_storage_type",
+        ),
+        CheckConstraint("status IN ('pending', 'reached_out')", name="ck_leads_status"),
+    )
+
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str] = mapped_column(
         String(255), unique=True, index=True, nullable=False
     )
 
-    # Resume storage fields
-    resume_storage_type: Mapped[StorageType] = mapped_column(
-        Enum(StorageType), default=StorageType.FILESYSTEM, nullable=False
+    # Resume information - using String instead of Enum for SQLite compatibility
+    resume_storage_type: Mapped[str] = mapped_column(
+        String(20), default=StorageType.FILESYSTEM.value, nullable=False
     )
     resume_path: Mapped[Optional[str]] = mapped_column(
-        String(512), nullable=True
-    )  # Path or identifier based on storage type
+        String(36),  # UUIDs are 36 characters long
+        nullable=True,
+        unique=True,
+        index=True,
+    )
     resume_original_filename: Mapped[Optional[str]] = mapped_column(
         String(255), nullable=True
     )
     resume_mime_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    resume_size: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True
-    )  # Size in bytes
+    resume_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     resume_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(
         JSON, nullable=True
-    )  # Additional metadata as JSON
+    )
 
-    status: Mapped[LeadStatus] = mapped_column(
-        Enum(LeadStatus), default=LeadStatus.PENDING, nullable=False
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    # Status
+    status: Mapped[str] = mapped_column(
+        String(20), default=LeadStatus.PENDING.value, nullable=False
     )
 
     @property
@@ -67,8 +107,13 @@ class LeadDB(BaseModelWithId):
         Returns:
             Dict[str, Any]: A dictionary containing resume information.
         """
+        # Convert storage type to string if it's an enum
+        storage_type = self.resume_storage_type
+        if hasattr(storage_type, "value"):
+            storage_type = storage_type.value
+
         return {
-            "storage_type": self.resume_storage_type.value,
+            "storage_type": storage_type,
             "path": self.resume_path,
             "original_filename": self.resume_original_filename,
             "mime_type": self.resume_mime_type,

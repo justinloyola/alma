@@ -1,27 +1,15 @@
-import os
+"""Database base classes and utilities."""
 from contextlib import contextmanager
 from typing import Generator, Iterator
 
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.orm import Session
 
-load_dotenv()
+# Import the engine and SessionLocal from database.py
+from .database import SessionLocal
+from .declarative_base import Base, BaseModelWithId
 
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./alma.db")
-
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-class Base(DeclarativeBase):
-    """Base class for all database models.
-
-    This class provides the base functionality for all SQLAlchemy models.
-    It's a thin wrapper around SQLAlchemy's DeclarativeBase.
-    """
+# Re-export for backward compatibility
+__all__ = ["Base", "BaseModelWithId", "get_db", "get_db_session"]
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -52,8 +40,9 @@ def get_db_session() -> Iterator[Session]:
     db = SessionLocal()
     try:
         yield db
-    except Exception:
+        db.commit()
+    except Exception as e:
         db.rollback()
-        raise
+        raise e
     finally:
         db.close()

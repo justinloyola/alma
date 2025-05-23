@@ -22,9 +22,9 @@ const App: React.FC = () => {
     const checkApiHealth = async () => {
       try {
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
-        const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api` : '/api';
+        const baseUrl = apiBaseUrl || '';
 
-        const response = await axios.get<HealthStatus>(`${apiUrl}/health`);
+        const response = await axios.get<HealthStatus>(`${baseUrl}/api/v1/health`);
         setApiStatus({
           loading: false,
           error: null,
