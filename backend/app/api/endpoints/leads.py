@@ -211,11 +211,7 @@ async def create_new_lead(
     logger.info(f"[LEAD] Starting lead creation for {email}")
 
     # Check if lead with this email already exists
-    existing_lead = (
-        db.query(LeadDB)
-        .filter(LeadDB.email == email)
-        .first()
-    )
+    existing_lead = db.query(LeadDB).filter(LeadDB.email == email).first()
     if existing_lead:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

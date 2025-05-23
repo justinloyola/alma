@@ -1,0 +1,21 @@
+[lint]
+# Allow lines to be up to 120 characters long
+line-length = 120
+
+# Ignore line length for test files
+[per-file-ignores]
+"**/tests/*.py" = ["E501"]
+"**/migrations/*.py" = ["E501"]
+
+# Ignore specific rules
+select = [
+    "E9",  # Syntax errors
+    "F",   # Pyflakes
+    "I",   # isort
+]
+ignore = [
+    "E501",  # Line too long
+    "F401",  # Unused imports
+    "F811",  # Redefinition of unused
+    "F821",  # Undefined name
+]
