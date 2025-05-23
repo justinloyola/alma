@@ -99,7 +99,7 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 app.include_router(api_router, prefix="/api")
 
 
-@app.get("/health", status_code=status.HTTP_200_OK)
+@app.get("/api/health", status_code=status.HTTP_200_OK, tags=["health"])
 async def health_check() -> Dict[str, str]:
     """
     Health check endpoint.

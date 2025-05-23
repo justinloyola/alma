@@ -1,7 +1,7 @@
 # Standard library imports
 import logging
 from io import BytesIO
-from typing import List
+from typing import List, Optional
 
 # Third-party imports
 try:
@@ -32,6 +32,35 @@ from app.models.lead import Lead, LeadCreate, LeadUpdate, LeadStatus
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+
+def safe_lead_status(status_value: Optional[str]) -> LeadStatus:
+    """Safely convert a status string to LeadStatus.
+
+    Args:
+        status_value: The status value to convert
+
+    Returns:
+        LeadStatus: The converted status, defaults to PENDING if invalid
+    """
+    if not status_value:
+        return LeadStatus.PENDING
+
+    try:
+        # Try to convert the status value to uppercase and match with enum
+        upper_status = status_value.upper()
+        if upper_status in [e.value.upper() for e in LeadStatus]:
+            return LeadStatus[upper_status]
+
+        # Handle legacy status values
+        if upper_status == "NEW":
+            return LeadStatus.PENDING
+
+    except (ValueError, KeyError, AttributeError):
+        pass
+
+    # Default to PENDING if conversion fails
+    return LeadStatus.PENDING
 
 
 # Create a router for leads endpoints
@@ -216,17 +245,52 @@ def read_leads(
 ) -> List[Lead]:
     """
     Retrieve all leads with pagination.
-
-    Args:
-        skip: Number of records to skip (default: 0)
-        limit: Maximum number of records to return (default: 100)
-        db: Database session
-
-    Returns:
-        List of lead objects
     """
-    db_leads = db.query(LeadDB).offset(skip).limit(limit).all()
-    return [Lead.from_orm(lead) for lead in db_leads]
+    try:
+        # Query the database
+        db_leads = db.query(LeadDB).offset(skip).limit(limit).all()
+
+        # Convert database models to Pydantic models
+        leads = []
+        for lead in db_leads:
+            lead_dict = {
+                "id": lead.id,
+                "first_name": lead.first_name,
+                "last_name": lead.last_name,
+                "email": lead.email,
+                "status": LeadStatus(lead.status)
+                if lead.status
+                else LeadStatus.PENDING,
+                "created_at": lead.created_at,
+                "updated_at": lead.updated_at,
+            }
+
+            # Add optional fields
+            if hasattr(lead, "resume_path") and lead.resume_path:
+                lead_dict["resume_path"] = lead.resume_path
+            if (
+                hasattr(lead, "resume_original_filename")
+                and lead.resume_original_filename
+            ):
+                lead_dict["resume_original_filename"] = lead.resume_original_filename
+
+            leads.append(Lead(**lead_dict))
+
+        return leads
+
+    except Exception as e:
+        print(f"=== ERROR IN READ_LEADS: {str(e)}")
+        print(f"=== ERROR TYPE: {type(e).__name__}")
+        import traceback
+
+        print("=== TRACEBACK ===")
+        print(traceback.format_exc())
+        print("================")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving leads: {str(e)}",
+        )
 
 
 @router.get("/{lead_id}", response_model=Lead)
@@ -245,9 +309,36 @@ def read_lead(lead_id: int, db: Session = Depends(get_db)) -> Lead:
         HTTPException: If lead is not found
     """
     db_lead = db.query(LeadDB).filter(LeadDB.id == lead_id).first()
-    if not db_lead:
+    if db_lead is None:
         raise HTTPException(status_code=404, detail="Lead not found")
-    return Lead.from_orm(db_lead)
+
+    try:
+        return Lead(
+            id=db_lead.id,
+            first_name=db_lead.first_name,
+            last_name=db_lead.last_name,
+            email=db_lead.email,
+            status=LeadStatus(db_lead.status) if db_lead.status else LeadStatus.PENDING,
+            created_at=db_lead.created_at,
+            updated_at=db_lead.updated_at,
+            resume_path=db_lead.resume_path,
+            resume_original_filename=db_lead.resume_original_filename,
+            resume_mime_type=db_lead.resume_mime_type,
+            resume_size=db_lead.resume_size,
+            resume_storage_type=db_lead.resume_storage_type.value
+            if db_lead.resume_storage_type
+            else None,
+        )
+    except Exception as e:
+        logger.error(
+            f"Error processing lead {lead_id}",
+            exc_info=True,
+            extra={"lead_id": lead_id, "error": str(e)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error processing lead data",
+        )
 
 
 @router.get("/{lead_id}/resume")
