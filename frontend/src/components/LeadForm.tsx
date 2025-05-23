@@ -40,7 +40,7 @@ const LeadForm: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.resume) {
       setSubmitStatus({
         success: false,
@@ -62,7 +62,7 @@ const LeadForm: React.FC = () => {
 
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
       const baseUrl = apiBaseUrl || '';
-      
+
       const response = await axios.post(`${baseUrl}/api/leads`, formDataToSend, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -73,7 +73,7 @@ const LeadForm: React.FC = () => {
         success: true,
         message: 'Lead submitted successfully!',
       });
-      
+
       // Reset form
       setFormData({
         firstName: '',
@@ -84,13 +84,13 @@ const LeadForm: React.FC = () => {
     } catch (error: any) {
       console.error('Error submitting lead:', error);
       let errorMessage = 'Failed to submit lead. Please try again.';
-      
+
       if (error?.response?.data?.detail) {
         errorMessage = String(error.response.data.detail);
       } else if (error?.message) {
         errorMessage = error.message;
       }
-      
+
       setSubmitStatus({
         success: false,
         message: errorMessage,
@@ -103,7 +103,7 @@ const LeadForm: React.FC = () => {
   return (
     <div className="max-w-md mx-auto mt-8 p-6 bg-white rounded-lg shadow-md">
       <h2 className="text-2xl font-bold mb-6 text-gray-800">Submit Your Information</h2>
-      
+
       {submitStatus && (
         <div className={`mb-4 p-3 rounded ${submitStatus.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
           {submitStatus.message}

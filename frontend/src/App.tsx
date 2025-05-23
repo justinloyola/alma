@@ -23,7 +23,7 @@ const App: React.FC = () => {
       try {
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
         const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api` : '/api';
-        
+
         const response = await axios.get<HealthStatus>(`${apiUrl}/health`);
         setApiStatus({
           loading: false,
@@ -50,7 +50,7 @@ const App: React.FC = () => {
           <h1 className="text-4xl font-extrabold text-gray-900 sm:text-5xl sm:tracking-tight lg:text-6xl">
             Alma Lead Management
           </h1>
-          
+
           {apiStatus.loading ? (
             <p className="mt-4 text-lg text-gray-600">Checking API status...</p>
           ) : apiStatus.error ? (

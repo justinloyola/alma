@@ -6,6 +6,12 @@ __pycache__/
 *.pyd
 *.so
 
+# Pre-commit
+.pre-commit-config.yaml
+.pre-commit-hooks.yaml
+.pre-commit-hooks-cache/
+.pre-commit-config.yaml.bak
+
 # Build and distribution
 build/
 dist/
