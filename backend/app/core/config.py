@@ -1,4 +1,5 @@
 """Application configuration settings."""
+
 import os
 from typing import List, Optional, Union
 
@@ -54,9 +55,7 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "")
     POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "")
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "")
-    SQLALCHEMY_DATABASE_URI: Optional[str] = os.getenv(
-        "DATABASE_URL", "sqlite:///./alma.db"
-    )
+    SQLALCHEMY_DATABASE_URI: Optional[str] = os.getenv("DATABASE_URL", "sqlite:///./alma.db")
 
     @field_validator("SQLALCHEMY_DATABASE_URI", mode="before")
     @classmethod
@@ -89,9 +88,7 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads/resumes"
 
     # Model configuration
-    model_config = SettingsConfigDict(
-        env_file=".env", case_sensitive=True, extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
 
 # Create settings instance

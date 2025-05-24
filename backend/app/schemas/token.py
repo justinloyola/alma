@@ -1,4 +1,5 @@
 """Pydantic models for token related schemas."""
+
 from pydantic import BaseModel, EmailStr
 
 

@@ -1,4 +1,5 @@
 """Database models and session management."""
+
 from typing import TypeVar
 
 # Import models to ensure they are registered with SQLAlchemy

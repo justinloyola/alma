@@ -26,9 +26,7 @@ TEST_DB_URL = "sqlite:///:memory:"
 os.environ["DATABASE_URL"] = TEST_DB_URL
 
 # Create a test database engine
-engine = create_engine(
-    TEST_DB_URL, connect_args={"check_same_thread": False, "timeout": 30}
-)
+engine = create_engine(TEST_DB_URL, connect_args={"check_same_thread": False, "timeout": 30})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -100,7 +98,6 @@ def client(db: Session) -> Generator[TestClient, None, None]:
 @pytest.fixture(scope="function")
 def test_user(db: Session) -> Dict[str, Any]:
     """Create a test user in the database."""
-    from app.db.models import UserDB
 
     # Create a unique email
     email = f"test_{datetime.utcnow().timestamp()}@example.com"
@@ -111,9 +108,7 @@ def test_user(db: Session) -> Dict[str, Any]:
     # Create and save the user
     user = UserDB(
         email=email,
-        hashed_password=(
-            "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW"
-        ),  # password = testpassword
+        hashed_password=("$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW"),  # password = testpassword
         is_active=True,
         is_superuser=False,
     )
@@ -142,7 +137,6 @@ def test_user_token(test_user: Dict[str, Any], db: Session) -> str:
 
     from app.core.config import settings
     from app.core.security import create_access_token
-    from app.db.models import UserDB
 
     # Get the user from the database
     user = db.query(UserDB).filter(UserDB.email == test_user["email"]).first()
@@ -210,7 +204,6 @@ def db(engine: create_engine) -> Generator[Session, None, None]:
     session = SessionLocal(bind=connection)
 
     # Create a test user if it doesn't exist
-    from app.db.models import UserDB
 
     test_user = session.query(UserDB).filter_by(email="test@example.com").first()
     if not test_user:
@@ -285,9 +278,9 @@ def test_create_lead(
         except Exception as e:
             print(f"Failed to parse error response: {e}")
 
-    assert (
-        response.status_code == 201
-    ), f"Expected status code 201, got {response.status_code}. Response: {response.text}"
+    assert response.status_code == 201, (
+        f"Expected status code 201, got {response.status_code}. Response: {response.text}"
+    )
 
     data = response.json()
     assert data["first_name"] == "Test"
@@ -338,9 +331,7 @@ def test_get_lead(
         print(f"Response status code: {response.status_code}")
         print(f"Response content: {response.text}")
 
-        assert (
-            response.status_code == 200
-        ), f"Expected status code 200, got {response.status_code}"
+        assert response.status_code == 200, f"Expected status code 200, got {response.status_code}"
 
         data = response.json()
         assert data["id"] == created_lead["id"]
@@ -412,9 +403,7 @@ def test_update_lead(
         print(f"Update response status code: {response.status_code}")
         print(f"Update response content: {response.text}")
 
-        assert (
-            response.status_code == 200
-        ), f"Expected status code 200, got {response.status_code}"
+        assert response.status_code == 200, f"Expected status code 200, got {response.status_code}"
 
         updated_lead = response.json()
         assert updated_lead["status"] == "reached_out"
@@ -449,9 +438,7 @@ def test_mark_lead_reached_out(
         print(f"Response status code: {response.status_code}")
         print(f"Response content: {response.text}")
 
-        assert (
-            response.status_code == 200
-        ), f"Expected status code 200, got {response.status_code}"
+        assert response.status_code == 200, f"Expected status code 200, got {response.status_code}"
 
         updated_lead = response.json()
         assert updated_lead["status"] == "reached_out"
@@ -464,9 +451,7 @@ def test_mark_lead_reached_out(
             headers=auth_headers,
         )
 
-        assert (
-            response.status_code == 400
-        ), "Should not be able to mark as reached out again"
+        assert response.status_code == 400, "Should not be able to mark as reached out again"
 
     finally:
         # Clean up
@@ -491,9 +476,9 @@ def test_update_nonexistent_lead(
     print(f"Response status code: {response.status_code}")
     print(f"Response content: {response.text}")
 
-    assert (
-        response.status_code == 404
-    ), f"Expected status code 404, got {response.status_code}. Response: {response.text}"
+    assert response.status_code == 404, (
+        f"Expected status code 404, got {response.status_code}. Response: {response.text}"
+    )
 
 
 def test_mark_nonexistent_lead_reached_out(
@@ -511,9 +496,7 @@ def test_mark_nonexistent_lead_reached_out(
     print(f"Response status code: {response.status_code}")
     print(f"Response content: {response.text}")
 
-    assert (
-        response.status_code == 404
-    ), f"Expected status code 404, got {response.status_code}"
+    assert response.status_code == 404, f"Expected status code 404, got {response.status_code}"
 
 
 def test_get_leads(
@@ -523,19 +506,14 @@ def test_get_leads(
 ) -> None:
     """Test retrieving a list of leads with pagination."""
     # Create test leads via API
-    test_emails = [
-        f"test_get_leads_{i}_{datetime.utcnow().timestamp()}@example.com"
-        for i in range(1, 6)
-    ]
+    test_emails = [f"test_get_leads_{i}_{datetime.utcnow().timestamp()}@example.com" for i in range(1, 6)]
 
     created_lead_ids = []
 
     try:
         # Create test leads using the helper function
         for i, email in enumerate(test_emails):
-            lead = create_test_lead(
-                client=client, db=db, auth_headers=auth_headers, email=email
-            )
+            lead = create_test_lead(client=client, db=db, auth_headers=auth_headers, email=email)
             # Update additional fields
             lead["first_name"] = f"Test{i}"
             lead["last_name"] = f"User{i}"
@@ -549,9 +527,7 @@ def test_get_leads(
         print(f"Response status code: {response.status_code}")
         print(f"Response content: {response.text}")
 
-        assert (
-            response.status_code == 200
-        ), f"Expected status code 200, got {response.status_code}"
+        assert response.status_code == 200, f"Expected status code 200, got {response.status_code}"
 
         data = response.json()
         assert isinstance(data, list)
@@ -567,9 +543,7 @@ def test_get_leads(
         print(f"Paginated response status code: {response.status_code}")
         print(f"Paginated response content: {response.text}")
 
-        assert (
-            response.status_code == 200
-        ), f"Expected status code 200, got {response.status_code}"
+        assert response.status_code == 200, f"Expected status code 200, got {response.status_code}"
 
         data = response.json()
         assert isinstance(data, list)
@@ -581,31 +555,23 @@ def test_get_leads(
             db.query(LeadDB).filter(LeadDB.id == lead_id).delete()
         db.commit()
         # Test with limit exceeding total
-        response = client.get(
-            "/api/v1/leads/", params={"skip": 0, "limit": 10}, headers=auth_headers
-        )
+        response = client.get("/api/v1/leads/", params={"skip": 0, "limit": 10}, headers=auth_headers)
 
         print(f"Limit exceeding response status code: {response.status_code}")
         print(f"Limit exceeding response content: {response.text}")
 
-        assert (
-            response.status_code == 200
-        ), f"Expected status code 200, got {response.status_code}"
+        assert response.status_code == 200, f"Expected status code 200, got {response.status_code}"
 
         data = response.json()
         assert len(data) >= 5  # Should return all test leads
 
         # Test with skip exceeding total
-        response = client.get(
-            "/api/v1/leads/", params={"skip": 100, "limit": 5}, headers=auth_headers
-        )
+        response = client.get("/api/v1/leads/", params={"skip": 100, "limit": 5}, headers=auth_headers)
 
         print(f"Skip exceeding response status code: {response.status_code}")
         print(f"Skip exceeding response content: {response.text}")
 
-        assert (
-            response.status_code == 200
-        ), f"Expected status code 200, got {response.status_code}"
+        assert response.status_code == 200, f"Expected status code 200, got {response.status_code}"
 
         data = response.json()
         assert len(data) == 0  # Should return empty list

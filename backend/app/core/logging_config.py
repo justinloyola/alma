@@ -14,34 +14,51 @@ class SimpleFormatter(logging.Formatter):
 
 def setup_logging() -> None:
     """
-    Configure basic console logging for the application.
+    Configure detailed console logging for the application.
 
-    This function sets up a console handler with a simple formatter and configures
+    This function sets up console handlers with detailed formatters and configures
     the root logger and specific loggers for common libraries.
     """
     # Set root logger level
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(logging.DEBUG)  # Set to DEBUG to capture all logs
 
     # Clear existing handlers
     root_logger.handlers.clear()
 
-    # Create console handler
+    # Create console handler for general logs
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(SimpleFormatter())
+    console_handler.setLevel(logging.DEBUG)
+
+    # Create a more detailed formatter
+    detailed_formatter = logging.Formatter(
+        "[%(asctime)s] %(levelname)s [%(name)s:%(lineno)d] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    console_handler.setFormatter(detailed_formatter)
 
     # Add handler to root logger
     root_logger.addHandler(console_handler)
-    # Prevent the log messages from being propagated to the root logger
-    # This prevents duplicate logs in some environments
     root_logger.propagate = False
 
+    # Configure SQLAlchemy logging
+    sqlalchemy_logger = logging.getLogger("sqlalchemy.engine")
+    sqlalchemy_logger.setLevel(logging.INFO)
+    sqlalchemy_logger.handlers = [console_handler]
+    sqlalchemy_logger.propagate = False
+
+    # Configure database logger
+    db_logger = logging.getLogger("app.db")
+    db_logger.setLevel(logging.DEBUG)
+    db_logger.handlers = [console_handler]
+    db_logger.propagate = False
+
     # Set up specific loggers
-    loggers = ["uvicorn", "uvicorn.error", "fastapi"]
+    loggers = ["uvicorn", "uvicorn.error", "uvicorn.access", "fastapi", "app"]
     for logger_name in loggers:
         logger = logging.getLogger(logger_name)
         logger.handlers.clear()
+        logger.setLevel(logging.DEBUG)
         logger.propagate = False
         logger.addHandler(console_handler)
 

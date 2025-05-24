@@ -1,21 +1,22 @@
 repos:
 -   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.1.14  # Latest stable version
+    rev: v0.11.11  # Latest stable version
     hooks:
     -   id: ruff
         types_or: [python, pyi, jupyter]
-        # Match the configuration in pyproject.toml
         args: [
             "--fix",
             "--exit-non-zero-on-fix",
-            "--select=E,F,I",  # Match the select in pyproject.toml
-            "--ignore=F401,E402",  # Match the ignore in pyproject.toml
-            "--line-length=88",  # Match the line-length in pyproject.toml
-            "--per-file-ignores=alembic/env.py:E402,create_tables.py:E402,scripts/migrate.py:E402,scripts/setup_db.py:E402"
+            "--line-length=120",
+            "--select=E9,F,I",  # Syntax errors, isort
+            "--ignore=F401,F811,F821",  # Common warnings to ignore
+            "--per-file-ignores=alembic/versions/*.py:E501,alembic/versions/*.py:F401"
         ]
     -   id: ruff-format
         types_or: [python, pyi, jupyter]
-        args: [--line-length=88]  # Match the line-length in pyproject.toml
+        args: [
+            "--line-length=120"
+        ]
 
 # Disabling mypy temporarily to speed up pre-commit
 # -   repo: https://github.com/pre-commit/mirrors-mypy

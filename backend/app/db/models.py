@@ -35,9 +35,7 @@ class UserDB(BaseModelWithId):
 
     __tablename__ = "users"
 
-    email: Mapped[str] = mapped_column(
-        String(255), unique=True, index=True, nullable=False
-    )
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -61,43 +59,25 @@ class LeadDB(BaseModelWithId):
     """Lead database model."""
 
     __tablename__ = "leads"
-    __table_args__ = (
-        CheckConstraint(
-            "resume_storage_type IN ('filesystem', 'postgres')",
-            name="ck_leads_resume_storage_type",
-        ),
-        CheckConstraint("status IN ('pending', 'reached_out')", name="ck_leads_status"),
-    )
+    __table_args__ = (CheckConstraint("status IN ('pending', 'reached_out')", name="ck_leads_status"),)
 
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    email: Mapped[str] = mapped_column(
-        String(255), unique=True, index=True, nullable=False
-    )
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
 
-    # Resume information - using String instead of Enum for SQLite compatibility
-    resume_storage_type: Mapped[str] = mapped_column(
-        String(20), default=StorageType.FILESYSTEM.value, nullable=False
-    )
+    # Resume information
     resume_path: Mapped[Optional[str]] = mapped_column(
         String(36),  # UUIDs are 36 characters long
         nullable=True,
         unique=True,
         index=True,
     )
-    resume_original_filename: Mapped[Optional[str]] = mapped_column(
-        String(255), nullable=True
-    )
+    resume_original_filename: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     resume_mime_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     resume_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    resume_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(
-        JSON, nullable=True
-    )
 
     # Status
-    status: Mapped[str] = mapped_column(
-        String(20), default=LeadStatus.PENDING.value, nullable=False
-    )
+    status: Mapped[str] = mapped_column(String(20), default=LeadStatus.PENDING.value, nullable=False)
 
     @property
     def resume_info(self) -> Dict[str, Any]:
@@ -107,18 +87,12 @@ class LeadDB(BaseModelWithId):
         Returns:
             Dict[str, Any]: A dictionary containing resume information.
         """
-        # Convert storage type to string if it's an enum
-        storage_type = self.resume_storage_type
-        if hasattr(storage_type, "value"):
-            storage_type = storage_type.value
-
         return {
-            "storage_type": storage_type,
-            "path": self.resume_path,
-            "original_filename": self.resume_original_filename,
+            "has_resume": bool(self.resume_path),
+            "filename": self.resume_original_filename,
             "mime_type": self.resume_mime_type,
             "size": self.resume_size,
-            "metadata": self.resume_metadata,
+            "download_url": (f"/api/v1/leads/{self.id}/resume" if self.resume_path else None),
         }
 
     def update_status(self, new_status: str) -> None:

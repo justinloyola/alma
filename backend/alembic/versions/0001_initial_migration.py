@@ -5,6 +5,7 @@ Revises:
 Create Date: 2023-05-22 00:00:00.000000
 
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -30,18 +31,14 @@ def upgrade() -> None:
             nullable=False,
             comment="Primary key",
         ),
-        sa.Column(
-            "email", sa.String(length=255), nullable=False, comment="User email address"
-        ),
+        sa.Column("email", sa.String(length=255), nullable=False, comment="User email address"),
         sa.Column(
             "hashed_password",
             sa.String(length=255),
             nullable=False,
             comment="Hashed password",
         ),
-        sa.Column(
-            "full_name", sa.String(length=255), nullable=True, comment="User full name"
-        ),
+        sa.Column("full_name", sa.String(length=255), nullable=True, comment="User full name"),
         sa.Column(
             "is_active",
             sa.Boolean(),
@@ -84,22 +81,9 @@ def upgrade() -> None:
             nullable=False,
             comment="Primary key",
         ),
-        sa.Column(
-            "first_name", sa.String(length=100), nullable=False, comment="First name"
-        ),
-        sa.Column(
-            "last_name", sa.String(length=100), nullable=False, comment="Last name"
-        ),
-        sa.Column(
-            "email", sa.String(length=255), nullable=False, comment="Email address"
-        ),
-        sa.Column(
-            "resume_storage_type",
-            sa.String(20),
-            server_default="filesystem",
-            nullable=False,
-            comment="Storage type for resume (filesystem, postgres)",
-        ),
+        sa.Column("first_name", sa.String(length=100), nullable=False, comment="First name"),
+        sa.Column("last_name", sa.String(length=100), nullable=False, comment="Last name"),
+        sa.Column("email", sa.String(length=255), nullable=False, comment="Email address"),
         sa.Column(
             "resume_path",
             sa.String(length=512),
@@ -123,12 +107,6 @@ def upgrade() -> None:
             sa.Integer(),
             nullable=True,
             comment="Size of resume in bytes",
-        ),
-        sa.Column(
-            "resume_metadata",
-            sa.JSON(),
-            nullable=True,
-            comment="Additional metadata for resume",
         ),
         sa.Column(
             "status",

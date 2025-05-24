@@ -28,7 +28,6 @@ class LeadService:
         self,
         lead_data: Dict[str, Any],
         resume_file: Optional[UploadFile] = None,
-        storage_type: str = "filesystem",
     ) -> LeadDB:
         """
         Create a new lead with optional resume file.
@@ -36,7 +35,6 @@ class LeadService:
         Args:
             lead_data: Lead data including first_name, last_name, email
             resume_file: Optional resume file to upload
-            storage_type: Storage type for the resume ('filesystem' or 'postgres')
 
         Returns:
             The created lead
@@ -63,7 +61,6 @@ class LeadService:
                 # Save the file and update lead with file info
                 lead = self.repository.update_resume(
                     db_obj=lead,
-                    resume_storage_type=storage_type,
                     resume_original_filename=resume_file.filename,
                     resume_mime_type=resume_file.content_type,
                     resume_size=resume_file.size,

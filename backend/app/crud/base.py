@@ -26,8 +26,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         self.model = model
         # Verify that the model has an 'id' attribute
         if not hasattr(model, "id") and not any(
-            isinstance(attr, InstrumentedAttribute) and attr.key == "id"
-            for attr in inspect(model).attrs
+            isinstance(attr, InstrumentedAttribute) and attr.key == "id" for attr in inspect(model).attrs
         ):
             raise ValueError(f"Model {model.__name__} must have an 'id' column")
 
@@ -43,9 +42,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         """
         return db.query(self.model).filter(self.model.id == id).first()
 
-    def get_multi(
-        self, db: Session, *, skip: int = 0, limit: int = 100
-    ) -> List[ModelType]:
+    def get_multi(self, db: Session, *, skip: int = 0, limit: int = 100) -> List[ModelType]:
         """Get multiple records with pagination.
 
         Args:

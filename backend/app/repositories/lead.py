@@ -52,7 +52,6 @@ class LeadRepository(BaseRepository[LeadDB, LeadCreate, LeadUpdate]):
         resume_original_filename: Optional[str] = None,
         resume_mime_type: Optional[str] = None,
         resume_size: Optional[int] = None,
-        resume_storage_type: str = StorageType.FILESYSTEM,
     ) -> LeadDB:
         """Create a new lead with resume information.
 
@@ -62,7 +61,6 @@ class LeadRepository(BaseRepository[LeadDB, LeadCreate, LeadUpdate]):
             resume_original_filename: Original filename of the resume.
             resume_mime_type: MIME type of the resume file.
             resume_size: Size of the resume file in bytes.
-            resume_storage_type: Type of storage used for the resume.
 
         Returns:
             The created LeadDB instance.
@@ -81,7 +79,6 @@ class LeadRepository(BaseRepository[LeadDB, LeadCreate, LeadUpdate]):
             resume_original_filename=resume_original_filename,
             resume_mime_type=resume_mime_type,
             resume_size=resume_size,
-            resume_storage_type=StorageType(resume_storage_type),
         )
 
         self.db.add(db_obj)
@@ -97,7 +94,6 @@ class LeadRepository(BaseRepository[LeadDB, LeadCreate, LeadUpdate]):
         resume_original_filename: Optional[str] = None,
         resume_mime_type: Optional[str] = None,
         resume_size: Optional[int] = None,
-        resume_storage_type: Optional[str] = None,
     ) -> LeadDB:
         """Update resume information for a lead.
 
@@ -107,7 +103,6 @@ class LeadRepository(BaseRepository[LeadDB, LeadCreate, LeadUpdate]):
             resume_original_filename: New original filename of the resume.
             resume_mime_type: New MIME type of the resume file.
             resume_size: New size of the resume file in bytes.
-            resume_storage_type: New type of storage used for the resume.
 
         Returns:
             The updated LeadDB instance.
@@ -120,8 +115,6 @@ class LeadRepository(BaseRepository[LeadDB, LeadCreate, LeadUpdate]):
             db_obj.resume_mime_type = resume_mime_type
         if resume_size is not None:
             db_obj.resume_size = resume_size
-        if resume_storage_type is not None:
-            db_obj.resume_storage_type = StorageType(resume_storage_type)
 
         self.db.add(db_obj)
         self.db.commit()

@@ -43,9 +43,7 @@ async def send_email(
         bool: True if email was sent successfully, False otherwise
     """
     try:
-        logger.info(
-            f"[EMAIL] Preparing to send email. To: {to_emails}, Subject: {subject}"
-        )
+        logger.info(f"[EMAIL] Preparing to send email. To: {to_emails}, Subject: {subject}")
 
         sendgrid_api_key = os.getenv("SENDGRID_API_KEY")
         if not sendgrid_api_key:
@@ -81,19 +79,13 @@ async def send_email(
                         attached_file = Attachment()
                         attached_file.file_content = FileContent(encoded)
                         attached_file.file_type = FileType("application/octet-stream")
-                        attached_file.file_name = FileName(
-                            os.path.basename(attachment["filename"])
-                        )
+                        attached_file.file_name = FileName(os.path.basename(attachment["filename"]))
                         attached_file.disposition = Disposition("attachment")
                         if "content_id" in attachment:
-                            attached_file.content_id = ContentId(
-                                attachment["content_id"]
-                            )
+                            attached_file.content_id = ContentId(attachment["content_id"])
 
                         message.attachment = attached_file
-                        logger.debug(
-                            f"[EMAIL] Added attachment {i}: {attachment['filename']}"
-                        )
+                        logger.debug(f"[EMAIL] Added attachment {i}: {attachment['filename']}")
                 except Exception as e:
                     logger.error(
                         f"[EMAIL] Error processing attachment {attachment.get('filename')}: {str(e)}",
@@ -108,9 +100,7 @@ async def send_email(
 
             logger.info("[EMAIL] Sending email via SendGrid...")
             # Make sure to await the async call
-            response = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: sg.send(message)
-            )
+            response = await asyncio.get_event_loop().run_in_executor(None, lambda: sg.send(message))
 
             # Log response details
             logger.info(f"[EMAIL] Email sent successfully to {', '.join(to_emails)}")
@@ -122,16 +112,12 @@ async def send_email(
                 logger.info("[EMAIL] Email sent successfully")
                 return True
             else:
-                logger.error(
-                    f"[EMAIL] Failed to send email. Status code: {response.status_code}"
-                )
+                logger.error(f"[EMAIL] Failed to send email. Status code: {response.status_code}")
                 logger.error(f"[EMAIL] Response body: {response.body}")
                 return False
 
         except Exception as e:
-            logger.error(
-                f"[EMAIL] Error sending email via SendGrid: {str(e)}", exc_info=True
-            )
+            logger.error(f"[EMAIL] Error sending email via SendGrid: {str(e)}", exc_info=True)
             return False
 
     except Exception as e:
@@ -168,10 +154,10 @@ def send_lead_confirmation(lead_data: Dict) -> bool:
 
             <div style="margin: 20px 0; padding: 15px; background-color: #e9f0f9; border-radius: 5px;">
                 <h3 style="margin-top: 0; color: #4a6baf;">Your Submission Details:</h3>
-                <p><strong>Name:</strong> {first_name} {lead_data.get('last_name', '')}</p>
+                <p><strong>Name:</strong> {first_name} {lead_data.get("last_name", "")}</p>
                 <p><strong>Email:</strong> <a href="mailto:{email}" style="color: #4a6baf; text-decoration: none;">{email}</a></p>
-                <p><strong>Phone:</strong> {lead_data.get('phone', 'Not provided')}</p>
-                <p><strong>Message:</strong> {lead_data.get('notes', 'No additional notes')}</p>
+                <p><strong>Phone:</strong> {lead_data.get("phone", "Not provided")}</p>
+                <p><strong>Message:</strong> {lead_data.get("notes", "No additional notes")}</p>
             </div>
 
             <p>If you have any questions, feel free to reply to this email.</p>
@@ -200,9 +186,7 @@ async def send_lead_notification(lead_data: Dict, admin_emails: List[str]) -> bo
     Returns:
         bool: True if all emails were sent successfully, False otherwise
     """
-    logger.info(
-        f"[LEAD NOTIFICATION] Starting notification for lead: {lead_data.get('id')}"
-    )
+    logger.info(f"[LEAD NOTIFICATION] Starting notification for lead: {lead_data.get('id')}")
 
     try:
         # Validate lead data
@@ -236,11 +220,11 @@ async def send_lead_notification(lead_data: Dict, admin_emails: List[str]) -> bo
 
                 <div style="margin: 20px 0; padding: 15px; background-color: #e9f0f9; border-radius: 5px;">
                     <h3 style="margin-top: 0; color: #4a6baf;">Your Submission Details:</h3>
-                    <p><strong>Name:</strong> {lead_data.get('first_name', '')} {lead_data.get('last_name', '')}</p>
+                    <p><strong>Name:</strong> {lead_data.get("first_name", "")} {lead_data.get("last_name", "")}</p>
                     <p><strong>Email:</strong> <a href="mailto:{lead_email}" style="color: #4a6baf; text-decoration: none;">{lead_email}</a></p>
-                    <p><strong>Phone:</strong> {lead_data.get('phone', 'Not provided')}</p>
-                    <p><strong>Message:</strong> {lead_data.get('notes', 'No additional notes')}</p>
-                    <p><strong>Submission Date:</strong> {lead_data.get('created_at', 'Unknown')}</p>
+                    <p><strong>Phone:</strong> {lead_data.get("phone", "Not provided")}</p>
+                    <p><strong>Message:</strong> {lead_data.get("notes", "No additional notes")}</p>
+                    <p><strong>Submission Date:</strong> {lead_data.get("created_at", "Unknown")}</p>
                 </div>
 
                 <p>If you have any questions, feel free to reply to this email.</p>
@@ -279,12 +263,12 @@ async def send_lead_notification(lead_data: Dict, admin_emails: List[str]) -> bo
 
                 <div style="margin: 20px 0; padding: 15px; background-color: #e9f0f9; border-radius: 5px;">
                     <h3 style="margin-top: 0; color: #4a6baf;">Lead Details:</h3>
-                    <p><strong>Name:</strong> {lead_data.get('first_name', '')} {lead_data.get('last_name', '')}</p>
+                    <p><strong>Name:</strong> {lead_data.get("first_name", "")} {lead_data.get("last_name", "")}</p>
                     <p><strong>Email:</strong> <a href="mailto:{lead_email}">{lead_email}</a></p>
-                    <p><strong>Phone:</strong> {lead_data.get('phone', 'Not provided')}</p>
-                    <p><strong>Message:</strong> {lead_data.get('notes', 'No additional notes')}</p>
-                    <p><strong>Submission Date:</strong> {lead_data.get('created_at', 'Unknown')}</p>
-                    <p><strong>Lead ID:</strong> {lead_data.get('id', 'N/A')}</p>
+                    <p><strong>Phone:</strong> {lead_data.get("phone", "Not provided")}</p>
+                    <p><strong>Message:</strong> {lead_data.get("notes", "No additional notes")}</p>
+                    <p><strong>Submission Date:</strong> {lead_data.get("created_at", "Unknown")}</p>
+                    <p><strong>Lead ID:</strong> {lead_data.get("id", "N/A")}</p>
                 </div>
 
                 <p>This lead was submitted through the website contact form.</p>
@@ -300,9 +284,7 @@ async def send_lead_notification(lead_data: Dict, admin_emails: List[str]) -> bo
         # Send notification to admin(s)
         admin_email_sent = True
         if admin_emails:
-            logger.info(
-                f"[EMAIL] Sending notification to admin(s): {', '.join(admin_emails)}"
-            )
+            logger.info(f"[EMAIL] Sending notification to admin(s): {', '.join(admin_emails)}")
             admin_email_sent = await send_email(
                 to_emails=admin_emails,
                 subject=admin_subject,
@@ -315,14 +297,10 @@ async def send_lead_notification(lead_data: Dict, admin_emails: List[str]) -> bo
             else:
                 logger.info("[EMAIL] Successfully sent notification email to admin(s)")
         else:
-            logger.warning(
-                "[EMAIL] No admin emails provided, skipping admin notification"
-            )
+            logger.warning("[EMAIL] No admin emails provided, skipping admin notification")
 
         result = lead_email_sent and admin_email_sent
-        logger.info(
-            f"[LEAD NOTIFICATION] Notification process completed {'successfully' if result else 'with errors'}"
-        )
+        logger.info(f"[LEAD NOTIFICATION] Notification process completed {'successfully' if result else 'with errors'}")
         return result
 
     except Exception as e:

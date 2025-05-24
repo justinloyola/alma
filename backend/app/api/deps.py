@@ -11,9 +11,7 @@ from app.db.models import UserDB
 reusable_oauth2 = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
 
 
-def get_current_user(
-    db: Session = Depends(get_db), token: str = Depends(reusable_oauth2)
-) -> UserDB:
+def get_current_user(db: Session = Depends(get_db), token: str = Depends(reusable_oauth2)) -> UserDB:
     """Get the current user from the token."""
     print(f"Verifying token: {token}")
     token_data = verify_token(token)

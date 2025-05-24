@@ -15,22 +15,12 @@ class LeadStatus(str, Enum):
 class LeadBase(BaseModel):
     """Base schema for Lead with common fields."""
 
-    first_name: str = Field(
-        ..., min_length=1, max_length=100, description="Lead's first name"
-    )
-    last_name: str = Field(
-        ..., min_length=1, max_length=100, description="Lead's last name"
-    )
+    first_name: str = Field(..., min_length=1, max_length=100, description="Lead's first name")
+    last_name: str = Field(..., min_length=1, max_length=100, description="Lead's last name")
     email: EmailStr = Field(..., description="Lead's email address")
-    status: LeadStatus = Field(
-        default=LeadStatus.PENDING, description="Current status of the lead"
-    )
-    created_at: Optional[datetime] = Field(
-        None, description="Timestamp when the lead was created"
-    )
-    updated_at: Optional[datetime] = Field(
-        None, description="Timestamp when the lead was last updated"
-    )
+    status: LeadStatus = Field(default=LeadStatus.PENDING, description="Current status of the lead")
+    created_at: Optional[datetime] = Field(None, description="Timestamp when the lead was created")
+    updated_at: Optional[datetime] = Field(None, description="Timestamp when the lead was last updated")
 
     class Config:
         json_schema_extra = {
@@ -57,20 +47,14 @@ class LeadCreate(LeadBase):
     )
 
     # Override status with a default value
-    status: LeadStatus = Field(
-        default=LeadStatus.PENDING, description="Current status of the lead"
-    )
+    status: LeadStatus = Field(default=LeadStatus.PENDING, description="Current status of the lead")
 
 
 class LeadUpdate(BaseModel):
     """Schema for updating a lead. All fields are optional."""
 
-    first_name: Optional[str] = Field(
-        None, min_length=1, max_length=100, description="Lead's first name"
-    )
-    last_name: Optional[str] = Field(
-        None, min_length=1, max_length=100, description="Lead's last name"
-    )
+    first_name: Optional[str] = Field(None, min_length=1, max_length=100, description="Lead's first name")
+    last_name: Optional[str] = Field(None, min_length=1, max_length=100, description="Lead's last name")
     email: Optional[EmailStr] = Field(None, description="Lead's email address")
     status: Optional[LeadStatus] = Field(None, description="Current status of the lead")
 
@@ -107,19 +91,14 @@ class Lead(LeadBase):
     """Complete Lead schema including read-only fields."""
 
     id: int = Field(..., description="Unique identifier for the lead")
-    created_at: Optional[datetime] = Field(
-        None, description="Timestamp when the lead was created"
-    )
-    updated_at: Optional[datetime] = Field(
-        None, description="Timestamp when the lead was last updated"
-    )
+    created_at: Optional[datetime] = Field(None, description="Timestamp when the lead was created")
+    updated_at: Optional[datetime] = Field(None, description="Timestamp when the lead was last updated")
 
     # Internal fields that should not be exposed in the API
     resume_path: Optional[str] = Field(None, exclude=True)
     resume_original_filename: Optional[str] = Field(None, exclude=True)
     resume_mime_type: Optional[str] = Field(None, exclude=True)
     resume_size: Optional[int] = Field(None, exclude=True)
-    resume_storage_type: Optional[str] = Field(None, exclude=True)
 
     @classmethod
     def from_orm(cls, obj: Any) -> "Lead":
@@ -144,7 +123,6 @@ class Lead(LeadBase):
             resume_original_filename=obj.resume_original_filename,
             resume_mime_type=obj.resume_mime_type,
             resume_size=obj.resume_size,
-            resume_storage_type=obj.resume_storage_type,
         )
 
     class Config:

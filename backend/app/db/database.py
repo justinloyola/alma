@@ -20,6 +20,14 @@ def create_db_engine(database_uri: Optional[str] = None) -> Engine:
     Raises:
         ValueError: If no database URI is provided and none is set in settings.
     """
+    import logging
+
+    # Configure SQLAlchemy logging
+    logging.basicConfig()
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+    logging.getLogger("sqlalchemy.pool").setLevel(logging.INFO)
+    logging.getLogger("sqlalchemy.orm").setLevel(logging.INFO)
+
     uri = database_uri or settings.SQLALCHEMY_DATABASE_URI
     if not uri:
         raise ValueError("No database URL provided and none set in settings")
@@ -31,6 +39,10 @@ def create_db_engine(database_uri: Optional[str] = None) -> Engine:
                 uri,
                 connect_args={"check_same_thread": False},
                 echo=True,  # Enable SQL query logging for debugging
+                echo_pool="debug",  # Log connection pool events
+                logging_name="sqlalchemy.engine",
+                pool_pre_ping=True,  # Enable connection health checks
+                pool_recycle=3600,  # Recycle connections after 1 hour
             )
         else:
             return create_engine(
@@ -38,8 +50,11 @@ def create_db_engine(database_uri: Optional[str] = None) -> Engine:
                 pool_pre_ping=True,
                 pool_size=10,
                 max_overflow=20,
+                echo=True,
+                echo_pool="debug",
+                logging_name="sqlalchemy.engine",
             )
-    return create_engine(uri)
+    return create_engine(uri, echo=True, echo_pool="debug")
 
 
 # Create database engine

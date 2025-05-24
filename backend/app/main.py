@@ -34,9 +34,7 @@ ASGIAppCallable = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 
 @app.middleware("http")
-async def log_requests(
-    request: Request, call_next: Callable[[Request], Awaitable[Response]]
-) -> Response:
+async def log_requests(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     """
     Log all incoming requests and responses.
 
@@ -47,12 +45,23 @@ async def log_requests(
     Returns:
         Response: The response from the next middleware or route handler.
     """
+    # Log request details
     logger.info(f"Request: {request.method} {request.url}")
+    logger.debug(f"Request headers: {dict(request.headers)}")
+
+    # Log database connection status
+    try:
+        from app.db.database import engine
+
+        with engine.connect() as conn:
+            conn.execute("SELECT 1")
+            logger.debug("Database connection check: SUCCESS")
+    except Exception as db_error:
+        logger.error(f"Database connection check FAILED: {str(db_error)}", exc_info=True)
+
     try:
         response = await call_next(request)
-        logger.info(
-            f"Response: {request.method} {request.url} - Status: {response.status_code}"
-        )
+        logger.info(f"Response: {request.method} {request.url} - Status: {response.status_code}")
         return response
     except Exception as e:
         logger.error(
@@ -90,9 +99,7 @@ from app.api.endpoints import auth as auth_router
 app.include_router(auth_router.router, prefix="/api/v1/auth", tags=["auth"])
 
 # Include the main API router with the /api/v1 prefix and authentication
-app.include_router(
-    api_router, prefix="/api/v1", dependencies=[Depends(deps.get_current_active_user)]
-)
+app.include_router(api_router, prefix="/api/v1", dependencies=[Depends(deps.get_current_active_user)])
 
 
 @app.get("/api/v1/health", status_code=status.HTTP_200_OK, tags=["health"])

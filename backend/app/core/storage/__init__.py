@@ -143,9 +143,6 @@ class PostgresStorage(StorageBackend):
             db_lead.resume_original_filename = original_filename
             db_lead.resume_size = len(file_content)
 
-            if metadata:
-                db_lead.resume_metadata = metadata
-
             db.commit()
             return f"postgres://{lead.id}"
         finally:
@@ -179,7 +176,6 @@ class PostgresStorage(StorageBackend):
             db_lead.resume_mime_type = None
             db_lead.resume_original_filename = None
             db_lead.resume_size = None
-            db_lead.resume_metadata = None
 
             db.commit()
             return True

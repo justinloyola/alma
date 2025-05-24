@@ -102,8 +102,7 @@ class FileUploadManager:
             if file_size > self.max_size:
                 return (
                     False,
-                    "File size exceeds the maximum allowed size of "
-                    f"{self.max_size / (1024 * 1024):.1f}MB",
+                    f"File size exceeds the maximum allowed size of {self.max_size / (1024 * 1024):.1f}MB",
                     metadata,
                 )
 
@@ -139,15 +138,13 @@ class FileUploadManager:
         self,
         file: UploadFile,
         lead_id: int,
-        storage_type: str = "filesystem",
         storage_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Save an uploaded file using the specified storage backend.
+        """Save an uploaded file using the filesystem storage backend.
 
         Args:
             file: The uploaded file
             lead_id: ID of the lead this file belongs to
-            storage_type: Type of storage to use ('filesystem' or 'postgres')
             storage_config: Additional configuration for the storage backend
 
         Returns:
@@ -172,24 +169,8 @@ class FileUploadManager:
             if not is_valid:
                 raise HTTPException(status_code=400, detail=error_msg)
 
-            # Determine storage type
-            try:
-                storage_enum = StorageType(storage_type.lower())
-            except ValueError:
-                valid_types = ", ".join(e.value for e in StorageType)
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Invalid storage type: {storage_type}. "
-                        f"Must be one of: {valid_types}"
-                    ),
-                )
-
-            # Set storage type on lead
-            lead.resume_storage_type = storage_enum
-
-            # Get the appropriate storage backend
-            storage = get_storage(storage_enum)
+            # Use filesystem storage
+            storage = get_storage(StorageType.FILESYSTEM)
 
             # Save the file using the storage backend
             await storage.save_file(
@@ -199,7 +180,6 @@ class FileUploadManager:
                 mime_type=file_metadata["content_type"],
                 metadata={
                     "uploaded_at": datetime.utcnow().isoformat(),
-                    "storage_type": storage_type,
                     **(storage_config or {}),
                 },
             )
@@ -216,7 +196,6 @@ class FileUploadManager:
                 extra={
                     "action": "save_file",
                     "lead_id": lead_id,
-                    "storage_type": storage_type,
                     "file_size": file_metadata["size"],
                 },
             )

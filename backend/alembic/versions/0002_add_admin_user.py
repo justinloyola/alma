@@ -5,6 +5,7 @@ Revises: 0001
 Create Date: 2023-05-22 00:01:00.000000
 
 """
+
 import os
 import sys
 from datetime import datetime
@@ -45,9 +46,7 @@ def upgrade() -> None:
     from app.core.security import get_password_hash
 
     # Check if admin user already exists
-    result = connection.execute(
-        text("SELECT id FROM users WHERE email = :email"), {"email": admin_email}
-    ).fetchone()
+    result = connection.execute(text("SELECT id FROM users WHERE email = :email"), {"email": admin_email}).fetchone()
 
     if not result:
         # Create admin user using raw SQL to avoid SQLite compatibility issues
@@ -100,9 +99,7 @@ def downgrade() -> None:
     connection = op.get_bind()
 
     # Remove admin user using parameterized query
-    connection.execute(
-        text("DELETE FROM users WHERE email = :email"), {"email": admin_email}
-    )
+    connection.execute(text("DELETE FROM users WHERE email = :email"), {"email": admin_email})
     print(f"Removed admin user: {admin_email}")
 
     # Note: We don't drop the users table here as it might contain other data

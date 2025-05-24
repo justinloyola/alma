@@ -20,9 +20,7 @@ database_url: Optional[str] = settings.SQLALCHEMY_DATABASE_URI
 
 # Ensure we have a valid database URL
 if not database_url:
-    raise ValueError(
-        "No database URL configured. Set DATABASE_URL environment variable."
-    )
+    raise ValueError("No database URL configured. Set DATABASE_URL environment variable.")
 
 # Convert to string if it's a SQLAlchemy URL object
 if hasattr(database_url, "render_as_string"):

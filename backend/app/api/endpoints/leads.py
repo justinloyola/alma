@@ -95,12 +95,7 @@ async def create_lead_route(
     email: str = Form(..., pattern=r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"),
     phone: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
-    resume: UploadFile = File(
-        ..., description="Resume file (PDF, JPG, or PNG, max 5MB)"
-    ),
-    storage_type: str = Form(
-        "filesystem", description="Storage type: 'filesystem' or 'postgres'"
-    ),
+    resume: UploadFile = File(..., description="Resume file (PDF, JPG, or PNG, max 5MB)"),
     db: Session = Depends(get_db),
 ):
     return await create_lead(
@@ -108,10 +103,7 @@ async def create_lead_route(
         first_name=first_name,
         last_name=last_name,
         email=email,
-        phone=phone,
-        notes=notes,
         resume=resume,
-        storage_type=storage_type,
         db=db,
     )
 
@@ -136,9 +128,6 @@ async def create_lead(
         ...,
         description="Resume file (PDF, JPG, or PNG, max 5MB)",
     ),
-    storage_type: str = Form(
-        "filesystem", description="Storage type: 'filesystem' or 'postgres'"
-    ),
     db: Session = Depends(get_db),
 ) -> Lead:
     """
@@ -155,10 +144,7 @@ async def create_lead(
             first_name=first_name,
             last_name=last_name,
             email=email,
-            phone=phone,
-            notes=notes,
             resume=resume,
-            storage_type=storage_type,
             db=db,
             current_user=None,  # No user for public endpoint
         )
@@ -183,10 +169,7 @@ async def create_new_lead(
     first_name: str = Form(...),
     last_name: str = Form(...),
     email: str = Form(...),
-    phone: Optional[str] = Form(None),
-    notes: Optional[str] = Form(None),
     resume: UploadFile = File(...),
-    storage_type: Optional[StorageType] = Form(StorageType.FILESYSTEM),
     db: Session = Depends(get_db),
     current_user: Optional[Any] = None,  # Optional authenticated user
 ) -> Lead:
@@ -199,7 +182,6 @@ async def create_new_lead(
         last_name: Lead's last name (1-100 chars)
         email: Lead's email address (valid email format)
         resume: Uploaded resume file
-        storage_type: Storage type for the resume
         db: Database session
 
     Returns:
@@ -238,11 +220,8 @@ async def create_new_lead(
                 file_extension = resume.filename.split(".")[-1].lower()
             mime_type = file_extension
 
-        # Save the uploaded file
-        storage_type_enum = (
-            StorageType(storage_type) if storage_type else StorageType.FILESYSTEM
-        )
-        storage = get_storage(storage_type_enum)
+        # Save the uploaded file using filesystem storage
+        storage = get_storage(StorageType.FILESYSTEM)
 
         # Create a file-like object from the uploaded file content
         file_obj = BytesIO(file_content)
@@ -275,25 +254,18 @@ async def create_new_lead(
         lead_dict = lead_data.dict(exclude_unset=True)
 
         # Ensure file_info is a dictionary
-        file_info_dict = (
-            dict(file_info) if not isinstance(file_info, dict) else file_info
-        )
+        file_info_dict = dict(file_info) if not isinstance(file_info, dict) else file_info
 
         # Create the database model with additional resume fields
         db_lead = LeadDB(
             first_name=lead_dict["first_name"],
             last_name=lead_dict["last_name"],
             email=lead_dict["email"],
-            status=lead_dict.get(
-                "status", LeadStatus.PENDING
-            ).value,  # Convert enum to string
+            status=lead_dict.get("status", LeadStatus.PENDING).value,  # Convert enum to string
             resume_path=file_info_dict.get("file_path"),
             resume_original_filename=file_info_dict.get("original_filename"),
             resume_mime_type=file_info_dict.get("content_type"),
             resume_size=file_info_dict.get("size"),
-            resume_storage_type=storage_type
-            if storage_type
-            else StorageType.FILESYSTEM.value,  # Ensure string value
         )
         db.add(db_lead)
         db.commit()
@@ -306,9 +278,7 @@ async def create_new_lead(
         logger.info("[LEAD] Email Configuration:")
         logger.info(f"[LEAD] - ADMIN_EMAIL: {admin_email}")
         logger.info(f"[LEAD] - FROM_EMAIL: {os.getenv('FROM_EMAIL')}")
-        logger.info(
-            f"[LEAD] - SENDGRID_API_KEY exists: {bool(os.getenv('SENDGRID_API_KEY'))}"
-        )
+        logger.info(f"[LEAD] - SENDGRID_API_KEY exists: {bool(os.getenv('SENDGRID_API_KEY'))}")
 
         if admin_email:
             # Prepare lead data for email
@@ -317,11 +287,7 @@ async def create_new_lead(
                 "first_name": db_lead.first_name,
                 "last_name": db_lead.last_name,
                 "email": db_lead.email,
-                "phone": db_lead.phone or "Not provided",
-                "notes": db_lead.notes or "No additional notes",
-                "created_at": db_lead.created_at.isoformat()
-                if db_lead.created_at
-                else "Unknown",
+                "created_at": db_lead.created_at.isoformat() if db_lead.created_at else "Unknown",
                 "status": db_lead.status,
             }
 
@@ -333,15 +299,11 @@ async def create_new_lead(
             # Create a wrapper function to run the async task
             async def send_notification_task():
                 try:
-                    logger.info(
-                        f"[LEAD] Starting email notification task for lead ID: {lead_data['id']}"
-                    )
+                    logger.info(f"[LEAD] Starting email notification task for lead ID: {lead_data['id']}")
                     from app.core.email import send_lead_notification
 
                     result = await send_lead_notification(lead_data, [admin_email])
-                    logger.info(
-                        f"[LEAD] Email notification task completed with result: {result}"
-                    )
+                    logger.info(f"[LEAD] Email notification task completed with result: {result}")
                     return result
                 except Exception as e:
                     logger.error(
@@ -371,9 +333,7 @@ async def create_new_lead(
                 "status": "validation_failed",
             },
         )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg
-        ) from e
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg) from e
     except Exception as e:
         logger.error(
             "Unexpected error creating lead",
@@ -487,9 +447,7 @@ def read_lead(
     },
     dependencies=[Depends(get_current_user)],
 )
-async def download_resume(
-    lead_id: int, db: Session = Depends(get_db)
-) -> StreamingResponse:
+async def download_resume(lead_id: int, db: Session = Depends(get_db)) -> StreamingResponse:
     """
     Download a lead's resume.
 
@@ -512,14 +470,9 @@ async def download_resume(
     if not db_lead.resume_path:
         raise HTTPException(status_code=404, detail="No resume found for this lead")
 
-    # Get the appropriate storage backend
+    # Get the file using filesystem storage
     try:
-        storage_type = (
-            str(db_lead.resume_storage_type)
-            if db_lead.resume_storage_type
-            else "filesystem"
-        )
-        storage = get_storage(StorageType(storage_type))
+        storage = get_storage(StorageType.FILESYSTEM)
         file_obj = await storage.get_file(db_lead)
         if not file_obj:
             raise HTTPException(status_code=404, detail="Resume file not found")
@@ -528,20 +481,13 @@ async def download_resume(
             file_obj,
             media_type=db_lead.resume_mime_type or "application/octet-stream",
             headers={
-                "Content-Disposition": (
-                    f"attachment; filename="
-                    f"{db_lead.resume_original_filename or 'resume'}"
-                ),
-                "Content-Length": str(db_lead.resume_size or 0)
-                if db_lead.resume_size
-                else "0",
+                "Content-Disposition": (f"attachment; filename={db_lead.resume_original_filename or 'resume'}"),
+                "Content-Length": str(db_lead.resume_size or 0) if db_lead.resume_size else "0",
             },
         )
     except Exception as e:
         logger.error(f"Error retrieving resume: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail="Error retrieving resume file"
-        ) from e
+        raise HTTPException(status_code=500, detail="Error retrieving resume file") from e
 
 
 @router.put(
