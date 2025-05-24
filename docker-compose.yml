@@ -12,6 +12,8 @@ services:
     restart: unless-stopped
     ports:
       - "3000:80"
+    env_file:
+      - ./.env  # Load environment variables from .env file
     environment:
       # API Configuration (using localhost to connect to the backend)
       - VITE_API_BASE_URL=http://localhost:8000
@@ -42,6 +44,8 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    env_file:
+      - ./.env  # Load environment variables from .env file
     volumes:
       - ./backend/app:/app/app
       - ./backend/uploads:/app/uploads
@@ -72,11 +76,20 @@ services:
       - SMTP_PORT=587
       - SMTP_HOST=smtp.sendgrid.net
       - SMTP_USER=apikey
-      - SMTP_PASSWORD=
-      - EMAILS_ENABLED=False
-      - EMAILS_FROM_EMAIL=noreply@example.com
+      - SMTP_PASSWORD=${SENDGRID_API_KEY}
+      - EMAILS_ENABLED=True
+      - EMAILS_FROM_EMAIL=${FROM_EMAIL}
       - EMAILS_FROM_NAME="Alma App"
-      - ADMIN_EMAIL=admin@example.com
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+
+      # Debug settings
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=DEBUG
+      - DEBUG=True
+      - SENDGRID_API_KEY_DEBUG=${SENDGRID_API_KEY}
+      - FROM_EMAIL_DEBUG=${FROM_EMAIL}
+      - ADMIN_EMAIL_DEBUG=${ADMIN_EMAIL}
 
       # Frontend URL
       - FRONTEND_URL=http://localhost:3000

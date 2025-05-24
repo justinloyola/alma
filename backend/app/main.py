@@ -51,10 +51,12 @@ async def log_requests(request: Request, call_next: Callable[[Request], Awaitabl
 
     # Log database connection status
     try:
+        from sqlalchemy import text
+
         from app.db.database import engine
 
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
             logger.debug("Database connection check: SUCCESS")
     except Exception as db_error:
         logger.error(f"Database connection check FAILED: {str(db_error)}", exc_info=True)

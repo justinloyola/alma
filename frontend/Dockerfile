@@ -9,8 +9,9 @@ COPY tsconfig.json ./
 COPY tsconfig.paths.json ./
 COPY vite.config.ts ./
 
-# Install all dependencies
+# Install all dependencies including types
 RUN npm install
+RUN npm install react-toastify @types/react-toastify
 
 # Copy the rest of the application
 COPY . .

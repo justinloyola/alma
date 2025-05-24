@@ -12,6 +12,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Request,
     Response,
     UploadFile,
     status,
@@ -78,6 +79,67 @@ def safe_lead_status(status_value: Optional[str]) -> LeadStatus:
 
 # Create a router for leads endpoints
 router = APIRouter(prefix="/leads", tags=["leads"])
+
+
+@router.get("/test-email")
+async def test_email(request: Request):
+    """
+    Test endpoint to check email configuration and sending.
+    """
+    import os
+
+    from fastapi.responses import JSONResponse
+
+    # Log environment variables for debugging
+    env_vars = {
+        "SENDGRID_API_KEY": "***" if os.getenv("SENDGRID_API_KEY") else "NOT SET",
+        "FROM_EMAIL": os.getenv("FROM_EMAIL", "NOT SET"),
+        "ADMIN_EMAIL": os.getenv("ADMIN_EMAIL", "NOT SET"),
+        "SMTP_HOST": os.getenv("SMTP_HOST", "NOT SET"),
+        "SMTP_PORT": os.getenv("SMTP_PORT", "NOT SET"),
+        "SMTP_USER": os.getenv("SMTP_USER", "NOT SET"),
+        "SMTP_PASSWORD": "***" if os.getenv("SMTP_PASSWORD") else "NOT SET",
+        "EMAILS_ENABLED": os.getenv("EMAILS_ENABLED", "NOT SET"),
+    }
+
+    # Try to send a test email
+    try:
+        from app.core.email import send_email
+
+        test_email = os.getenv("ADMIN_EMAIL")
+        if not test_email or test_email == "NOT SET":
+            return JSONResponse(
+                status_code=400,
+                content={"status": "error", "message": "ADMIN_EMAIL is not set", "environment": env_vars},
+            )
+
+        # Send a test email
+        success = await send_email(
+            to_emails=[test_email],
+            subject="Test Email from Alma",
+            html_content="<h1>Test Email</h1><p>This is a test email from the Alma application.</p>",
+        )
+
+        if success:
+            return {"status": "success", "message": f"Test email sent to {test_email}", "environment": env_vars}
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={"status": "error", "message": "Failed to send test email", "environment": env_vars},
+            )
+
+    except Exception as e:
+        import traceback
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Error sending test email: {str(e)}",
+                "traceback": traceback.format_exc(),
+                "environment": env_vars,
+            },
+        )
 
 
 # Register the POST endpoint for creating a new lead
@@ -296,13 +358,20 @@ async def create_new_lead(
             # Import the function directly to avoid potential serialization issues
             from app.core.email import send_lead_notification
 
-            # Create a wrapper function to run the async task
-            async def send_notification_task():
+            # Create a synchronous wrapper function to run the async task
+            def send_notification_task():
+                import asyncio
+
                 try:
                     logger.info(f"[LEAD] Starting email notification task for lead ID: {lead_data['id']}")
                     from app.core.email import send_lead_notification
 
-                    result = await send_lead_notification(lead_data, [admin_email])
+                    # Create a new event loop for the background task
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+
+                    # Run the async function
+                    result = loop.run_until_complete(send_lead_notification(lead_data, [admin_email]))
                     logger.info(f"[LEAD] Email notification task completed with result: {result}")
                     return result
                 except Exception as e:
@@ -311,6 +380,9 @@ async def create_new_lead(
                         exc_info=True,
                     )
                     return False
+                finally:
+                    # Close the loop when done
+                    loop.close()
 
             # Add the task to background tasks
             background_tasks.add_task(send_notification_task)
