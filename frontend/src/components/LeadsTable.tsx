@@ -15,6 +15,7 @@ const LeadsTable: React.FC = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [updatingLead, setUpdatingLead] = useState<number | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -39,6 +40,25 @@ const LeadsTable: React.FC = () => {
       month: 'short',
       day: 'numeric',
     });
+  };
+
+  const handleReachedOut = async (leadId: number) => {
+    try {
+      setUpdatingLead(leadId);
+      await api.put(`/api/v1/leads/${leadId}/reached-out`);
+
+      // Update the local state to reflect the status change
+      setLeads(leads.map(lead =>
+        lead.id === leadId
+          ? { ...lead, status: 'reached_out' }
+          : lead
+      ));
+    } catch (error) {
+      console.error('Error updating lead status:', error);
+      setError('Failed to update lead status. Please try again.');
+    } finally {
+      setUpdatingLead(null);
+    }
   };
 
   if (loading) {
@@ -90,6 +110,9 @@ const LeadsTable: React.FC = () => {
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Date Added
               </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -116,11 +139,26 @@ const LeadsTable: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {formatDate(lead.created_at)}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    {lead.status !== 'reached_out' && (
+                      <button
+                        onClick={() => handleReachedOut(lead.id)}
+                        disabled={updatingLead === lead.id}
+                        className={`inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white ${
+                          updatingLead === lead.id
+                            ? 'bg-indigo-400'
+                            : 'bg-indigo-600 hover:bg-indigo-700'
+                        } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
+                      >
+                        {updatingLead === lead.id ? 'Updating...' : 'Mark as Reached Out'}
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">
+                <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">
                   No leads found
                 </td>
               </tr>
